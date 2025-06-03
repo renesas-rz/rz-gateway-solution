@@ -1,0 +1,30 @@
+From 4922a5f7c42216d7c7f2d3c43682e11215b7f132 Mon Sep 17 00:00:00 2001
+From: Omkar Bolla <omkar.bolla@quest-global.com>
+Date: Thu, 28 Nov 2024 14:37:00 +0530
+Subject: [PATCH 06/14] Fixing corretto-11-bin packaging issue
+
+- do_package expecting libraries at lib folder for packaging,
+  but files are installed in lib64.
+- Renaming the lib64 to lib is fixed the issue
+
+Signed-off-by: Omkar Bolla <omkar.bolla@quest-global.com>
+---
+ .../amazon-corretto/corretto-11-bin_11.0.23.9.1.bb            | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/meta-aws/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb b/meta-aws/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
+index 8d78f13a..44658f7b 100644
+--- a/meta-aws/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
++++ b/meta-aws/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
+@@ -43,5 +43,9 @@ RDEPENDS:${PN}-ptest:prepend = "\
+     greengrass-bin \
+     "
+
++do_install_append_aarch64() {
++    mv ${D}/usr/lib64 ${D}/usr/lib
++}
++
+ # this is used by meta-aws-tests to find this recipe for ptests, so it should stay in this file instead of moving into corretto-bin-common
+ inherit ptest
+--
+2.25.1

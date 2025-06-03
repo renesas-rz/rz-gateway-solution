@@ -1,0 +1,42 @@
+From 98445dd2d9bb9f35a166ea543ac1517bb0aa848b Mon Sep 17 00:00:00 2001
+From: Omkar Bolla <omkar.bolla@quest-global.com>
+Date: Tue, 8 Apr 2025 14:28:50 +0530
+Subject: [PATCH 14/14] ISDRZGWSDEV-34: Enable openssh for IDT tool
+ connectivity
+
+- Disabled dropbear ssh server
+- Enabled openssh server
+
+Signed-off-by: Omkar Bolla <omkar.bolla@quest-global.com>
+---
+ meta-renesas/meta-rz-common/include/core-image-bsp.inc          | 1 +
+ meta-renesas/meta-rz-common/include/core-image-renesas-base.inc | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index e2b15e85..caae4a4f 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -78,6 +78,7 @@ IMAGE_INSTALL_append = " \
+ IMAGE_INSTALL_append = " \
+ 	u-boot-fw-utils \
+ 	python3-pip \
++	openssh-sshd \
+ "
+
+ # Additional tools for support testing Realtime characteristic in system
+diff --git a/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc b/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
+index 90667f37..b9bfe58f 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
+@@ -163,7 +163,7 @@ IMAGE_INSTALL_remove_rzg1 = " \
+
+ EXTRA_IMAGE_FEATURES += " \
+ 	package-management \
+-	ssh-server-dropbear \
++	ssh-server-openssh \
+ "
+
+ # Environment setup, support building kernel modules with kernel src in SDK
+--
+2.25.1
