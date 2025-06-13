@@ -1,0 +1,140 @@
+Subject: [PATCH 12/14] Fix the busybox issue
+
+Issue:
+    RAUC busybox patch is failed due to incompatible version of busybox
+Fix:
+    Modified the changes manually in the current version of busybox
+
+---
+ ...e-sizelimit-and-offset-option-for-lo.patch | 68 ++++++++-----------
+ 1 file changed, 25 insertions(+), 37 deletions(-)
+
+diff --git a/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch b/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
+index 5d7606ef..5bd27f72 100644
+--- a/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
++++ b/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
+@@ -28,66 +28,56 @@ losetup_main                                         479     483      +4
+ Signed-off-by: Steffen Trumtrar <s.trumtrar@pengutronix.de>
+ Signed-off-by: Denys Vlasenko <vda.linux@googlemail.com>
+ ---
+- include/libbb.h      |  3 ++-
+- libbb/loop.c         |  4 ++-
++ include/libbb.h      |  2 +-
++ libbb/loop.c         |  2 +-
+  util-linux/losetup.c |  2 +-
+- util-linux/mount.c   | 62 +++++++++++++++++++++++++++++++++++++++++++-
+- 4 files changed, 67 insertions(+), 4 deletions(-)
++ util-linux/mount.c   | 61 ++++++++++++++++++++++++++++++++++++++++++--
++ 4 files changed, 62 insertions(+), 5 deletions(-)
+
+ diff --git a/include/libbb.h b/include/libbb.h
+-index 6be934994..106794166 100644
++index d38af2d..d5231b1 100644
+ --- a/include/libbb.h
+ +++ b/include/libbb.h
+-@@ -1515,7 +1515,8 @@ int del_loop(const char *device) FAST_FUNC;
++@@ -1453,7 +1453,7 @@ extern int del_loop(const char *device) FAST_FUNC;
+   * malloc and return it in *devname.
+   * return value is the opened fd to the loop device, or < on error
+   */
+--int set_loop(char **devname, const char *file, unsigned long long offset, unsigned flags) FAST_FUNC;
+-+int set_loop(char **devname, const char *file, unsigned long long offset,
+-+		unsigned long long sizelimit, unsigned flags) FAST_FUNC;
++-extern int set_loop(char **devname, const char *file, unsigned long long offset, unsigned flags) FAST_FUNC;
+++extern int set_loop(char **devname, const char *file, unsigned long long offset, unsigned long long sizelimit, unsigned flags) FAST_FUNC;
+  /* These constants match linux/loop.h (without BB_ prefix): */
+  #define BB_LO_FLAGS_READ_ONLY 1
+  #define BB_LO_FLAGS_AUTOCLEAR 4
+ diff --git a/libbb/loop.c b/libbb/loop.c
+-index ada0c7638..85b2724e5 100644
++index c78535a..6931e62 100644
+ --- a/libbb/loop.c
+ +++ b/libbb/loop.c
+-@@ -102,7 +102,8 @@ int FAST_FUNC get_free_loop(void)
++@@ -84,7 +84,7 @@ int FAST_FUNC del_loop(const char *device)
+   * search will re-use an existing loop device already bound to that
+   * file/offset if it finds one.
+   */
+ -int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offset, unsigned flags)
+-+int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offset,
+-+		unsigned long long sizelimit, unsigned flags)
+++int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offset,unsigned long long sizelimit, unsigned flags)
+  {
+  	char dev[LOOP_NAMESIZE];
+  	char *try;
+-@@ -185,6 +186,7 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
+- 				memset(&loopinfo, 0, sizeof(loopinfo));
+- 				safe_strncpy((char *)loopinfo.lo_file_name, file, LO_NAME_SIZE);
+- 				loopinfo.lo_offset = offset;
+-+				loopinfo.lo_sizelimit = sizelimit;
+- 				/*
+- 				 * Used by mount to set LO_FLAGS_AUTOCLEAR.
+- 				 * LO_FLAGS_READ_ONLY is not set because RO is controlled by open type of the file.
+ diff --git a/util-linux/losetup.c b/util-linux/losetup.c
+-index cc6c2b1d5..ec0cf04e4 100644
++index bf480e9..55058d8 100644
+ --- a/util-linux/losetup.c
+ +++ b/util-linux/losetup.c
+-@@ -151,7 +151,7 @@ int losetup_main(int argc UNUSED_PARAM, char **argv)
+- 			if (opt & OPT_P) {
+- 				flags |= BB_LO_FLAGS_PARTSCAN;
+- 			}
+--			if (set_loop(&d, argv[0], offset, flags) < 0)
+-+			if (set_loop(&d, argv[0], offset, 0, flags) < 0)
++@@ -126,7 +126,7 @@ int losetup_main(int argc UNUSED_PARAM, char **argv)
++ 			d = *argv++;
++
++ 		if (argv[0]) {
++-			if (set_loop(&d, argv[0], offset, (opt & OPT_r) ? BB_LO_FLAGS_READ_ONLY : 0) < 0)
+++			if (set_loop(&d, argv[0], offset, 0, (opt & OPT_r) ? BB_LO_FLAGS_READ_ONLY : 0) < 0)
+  				bb_simple_perror_msg_and_die(argv[0]);
+  			return EXIT_SUCCESS;
+  		}
+ diff --git a/util-linux/mount.c b/util-linux/mount.c
+-index 84c85c057..efee3b1da 100644
++index 902c4d8..5285f27 100644
+ --- a/util-linux/mount.c
+ +++ b/util-linux/mount.c
+-@@ -1887,6 +1887,58 @@ static int nfsmount(struct mntent *mp, unsigned long vfsflags, char *filteropts)
++@@ -1852,6 +1852,58 @@ static int nfsmount(struct mntent *mp, unsigned long vfsflags, char *filteropts)
+
+  #endif // !ENABLE_FEATURE_MOUNT_NFS
+
+@@ -146,24 +136,22 @@ index 84c85c057..efee3b1da 100644
+  // Mount one directory.  Handles CIFS, NFS, loopback, autobind, and filesystem
+  // type detection.  Returns 0 for success, nonzero for failure.
+  // NB: mp->xxx fields may be trashed on exit
+-@@ -2030,9 +2082,16 @@ static int singlemount(struct mntent *mp, int ignore_busy)
++@@ -1995,9 +2047,13 @@ static int singlemount(struct mntent *mp, int ignore_busy)
+  	) {
+  		// Do we need to allocate a loopback device for it?
+  		if (ENABLE_FEATURE_MOUNT_LOOP && S_ISREG(st.st_mode)) {
+ +			unsigned long long offset;
+ +			unsigned long long sizelimit;
+-+
+  			loopFile = bb_simplify_path(mp->mnt_fsname);
+  			mp->mnt_fsname = NULL; // will receive malloced loop dev name
+-
++-
+ +			// Parse and remove loopback options
+ +			offset = cut_out_ull_opt(filteropts, "offset=");
+-+			sizelimit = cut_out_ull_opt(filteropts, "sizelimit=");
+-+
+++			sizelimit = cut_out_ull_opt(filteropts, "sizelimit=");
+  			// mount always creates AUTOCLEARed loopdevs, so that umounting
+  			// drops them without any code in the userspace.
+  			// This happens since circa linux-2.6.25:
+-@@ -2041,7 +2100,8 @@ static int singlemount(struct mntent *mp, int ignore_busy)
++@@ -2006,7 +2062,8 @@ static int singlemount(struct mntent *mp, int ignore_busy)
+  			// Subject: Allow auto-destruction of loop devices
+  			loopfd = set_loop(&mp->mnt_fsname,
+  					loopFile,
+@@ -174,5 +162,5 @@ index 84c85c057..efee3b1da 100644
+  						| BB_LO_FLAGS_AUTOCLEAR
+  			);
+ --
+-2.28.0
++2.25.1
+
+--
+2.25.1

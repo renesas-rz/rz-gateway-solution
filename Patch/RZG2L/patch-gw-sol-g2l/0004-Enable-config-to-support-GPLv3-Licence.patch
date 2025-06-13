@@ -1,0 +1,23 @@
+Subject: [PATCH 04/14] Enable config to support GPLv3 Licence
+
+- Enabled GPLv3 Licence to resolve networking package dependencies when aws greengrass meta layer is enabled
+
+---
+ meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+index 1e56b456..c9a83331 100644
+--- a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
++++ b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+@@ -290,7 +290,7 @@ DISTRO_FEATURES_NATIVESDK_remove = " x11"
+
+ CIP_MODE = "Buster"
+
+-INCOMPATIBLE_LICENSE = "GPLv3 GPLv3+"
++INCOMPATIBLE_LICENSE = "GPLv3+"
+
+ LICENSE_FLAGS_WHITELIST = " \
+ 	commercial_gstreamer1.0-plugins-ugly commercial_mpeg2dec \
+--
+2.25.1

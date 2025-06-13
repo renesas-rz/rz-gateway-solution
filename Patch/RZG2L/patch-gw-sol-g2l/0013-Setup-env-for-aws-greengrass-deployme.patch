@@ -1,0 +1,139 @@
+Subject: [PATCH 13/14] Setup env for aws greengrass deployment
+
+- AWS greengrass required pip tool to deploy aws greengrass components
+- Created ggc_user home directory to install required packages dynamically.
+
+---
+ .../greengrass-bin_2.9.6.bb                   |  2 +-
+ .../python/python3-pip/CVE-2021-3572.patch    | 48 +++++++++++++++++++
+ .../python/python3-pip_20.0.2.bb              | 33 +++++++++++++
+ .../meta-rz-common/include/core-image-bsp.inc |  5 ++
+ 4 files changed, 87 insertions(+), 1 deletion(-)
+ create mode 100644 meta-openembedded/meta-python/recipes-devtools/python/python3-pip/CVE-2021-3572.patch
+ create mode 100644 meta-openembedded/meta-python/recipes-devtools/python/python3-pip_20.0.2.bb
+
+diff --git a/meta-aws/recipes-iot/aws-iot-greengrass/greengrass-bin_2.9.6.bb b/meta-aws/recipes-iot/aws-iot-greengrass/greengrass-bin_2.9.6.bb
+index dd0e4160..512fe369 100644
+--- a/meta-aws/recipes-iot/aws-iot-greengrass/greengrass-bin_2.9.6.bb
++++ b/meta-aws/recipes-iot/aws-iot-greengrass/greengrass-bin_2.9.6.bb
+@@ -127,7 +127,7 @@ SYSTEMD_SERVICE:${PN} = "greengrass.service"
+
+ USERADD_PACKAGES = "${PN}"
+ GROUPADD_PARAM:${PN} = "-r ggc_group"
+-USERADD_PARAM:${PN} = "-r -M -N -g ggc_group -s /bin/false ggc_user"
++USERADD_PARAM:${PN} = "-r -m -N -g ggc_group -s /bin/false ggc_user"
+ GROUP_MEMS_PARAM:${PN} = ""
+
+ #
+diff --git a/meta-openembedded/meta-python/recipes-devtools/python/python3-pip/CVE-2021-3572.patch b/meta-openembedded/meta-python/recipes-devtools/python/python3-pip/CVE-2021-3572.patch
+new file mode 100644
+index 00000000..a38ab57b
+--- /dev/null
++++ b/meta-openembedded/meta-python/recipes-devtools/python/python3-pip/CVE-2021-3572.patch
+@@ -0,0 +1,48 @@
++From c4fd13410b9a219f77fc30775d4a0ac9f69725bd Mon Sep 17 00:00:00 2001
++From: Hitendra Prajapati <hprajapati@mvista.com>
++Date: Thu, 16 Jun 2022 09:52:43 +0530
++Subject: [PATCH] CVE-2021-3572
++
++Upstream-Status: Backport [https://github.com/pypa/pip/commit/e46bdda9711392fec0c45c1175bae6db847cb30b]
++CVE: CVE-2021-3572
++Signed-off-by: Hitendra Prajapati <hprajapati@mvista.com>
++---
++ news/9827.bugfix.rst         |  3 +++
++ src/pip/_internal/vcs/git.py | 10 ++++++++--
++ 2 files changed, 11 insertions(+), 2 deletions(-)
++ create mode 100644 news/9827.bugfix.rst
++
++diff --git a/news/9827.bugfix.rst b/news/9827.bugfix.rst
++new file mode 100644
++index 0000000..e0d27c3
++--- /dev/null
+++++ b/news/9827.bugfix.rst
++@@ -0,0 +1,3 @@
+++**SECURITY**: Stop splitting on unicode separators in git references,
+++which could be maliciously used to install a different revision on the
+++repository.
++diff --git a/src/pip/_internal/vcs/git.py b/src/pip/_internal/vcs/git.py
++index 7483303..1b895f6 100644
++--- a/src/pip/_internal/vcs/git.py
+++++ b/src/pip/_internal/vcs/git.py
++@@ -137,9 +137,15 @@ class Git(VersionControl):
++         output = cls.run_command(['show-ref', rev], cwd=dest,
++                                  show_stdout=False, on_returncode='ignore')
++         refs = {}
++-        for line in output.strip().splitlines():
+++        # NOTE: We do not use splitlines here since that would split on other
+++        #       unicode separators, which can be maliciously used to install a
+++        #       different revision.
+++        for line in output.strip().split("\n"):
+++            line = line.rstrip("\r")
+++            if not line:
+++                continue
++             try:
++-                sha, ref = line.split()
+++                ref_sha, ref_name = line.split(" ", maxsplit=2)
++             except ValueError:
++                 # Include the offending line to simplify troubleshooting if
++                 # this error ever occurs.
++--
++2.25.1
++
+diff --git a/meta-openembedded/meta-python/recipes-devtools/python/python3-pip_20.0.2.bb b/meta-openembedded/meta-python/recipes-devtools/python/python3-pip_20.0.2.bb
+new file mode 100644
+index 00000000..0f9fb288
+--- /dev/null
++++ b/meta-openembedded/meta-python/recipes-devtools/python/python3-pip_20.0.2.bb
+@@ -0,0 +1,33 @@
++SUMMARY = "The PyPA recommended tool for installing Python packages"
++HOMEPAGE = "https://pypi.python.org/pypi/pip"
++SECTION = "devel/python"
++LICENSE = "MIT"
++LIC_FILES_CHKSUM = "file://LICENSE.txt;md5=8ba06d529c955048e5ddd7c45459eb2e"
++
++DEPENDS += "python3 python3-setuptools-native"
++
++SRC_URI = "file://CVE-2021-3572.patch "
++SRC_URI[md5sum] = "7d42ba49b809604f0df3d55df1c3fd86"
++SRC_URI[sha256sum] = "7db0c8ea4c7ea51c8049640e8e6e7fde949de672bfa4949920675563a5a6967f"
++
++inherit pypi distutils3
++
++do_install_append() {
++    # Install as pip3 and leave pip2 as default
++    rm ${D}/${bindir}/pip
++    cp ${D}/${bindir}/pip3 ${D}/${bindir}/pip
++}
++
++RDEPENDS_${PN} = "\
++  python3-compile \
++  python3-io \
++  python3-html \
++  python3-json \
++  python3-netserver \
++  python3-setuptools \
++  python3-unixadmin \
++  python3-xmlrpc \
++  python3-pickle \
++"
++
++BBCLASSEXTEND = "native nativesdk"
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index 509f7945..e2b15e85 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -72,7 +72,12 @@ IMAGE_INSTALL_append = " \
+ 	aws-iot-device-sdk-python-v2 \
+         aws-greengrass-core-sdk-c \
+ 	aws-greengrass-core-sdk-python \
++"
++
++# Additional tools required to support aws greengrass development and OTA update
++IMAGE_INSTALL_append = " \
+ 	u-boot-fw-utils \
++	python3-pip \
+ "
+
+ # Additional tools for support testing Realtime characteristic in system
+--
+2.25.1

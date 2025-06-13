@@ -1,0 +1,2361 @@
+Since I2C module has not been mainlined yet, this commit add local
+patches for support I2C on RZ/G3S EVK.
+---
+ .../linux/linux-renesas/patches.scc           |  20 +
+ ...ce-helper-functions-for-I2C-read-wri.patch | 187 ++++++++
+ ...gister-offsets-and-chip-details-as-O.patch | 132 ++++++
+ ...c-riic-Add-support-for-R9A09G057-SoC.patch |  50 +++
+ ...renesas-riic-Document-R9A09G057-supp.patch |  62 +++
+ ...rd-according-to-newest-specification.patch |  45 ++
+ ...temporary-variable-for-struct-device.patch | 177 ++++++++
+ ..._runtime_get_sync-when-need-to-acces.patch |  76 ++++
+ ...c-riic-Use-pm_runtime_resume_and_get.patch |  74 ++++
+ ...nable-runtime-PM-autosuspend-support.patch |  73 ++++
+ ...-i2c-riic-Add-suspend-resume-support.patch | 171 ++++++++
+ ...individual-arrays-to-describe-the-re.patch | 101 +++++
+ ...-riic-Add-support-for-fast-mode-plus.patch | 125 ++++++
+ ...-dts-renesas-r9a08g045-Add-I2C-nodes.patch | 117 +++++
+ ...renesas-rzg3s-smarc-Enable-I2C0-node.patch |  43 ++
+ ...reword-according-to-newest-specifica.patch |  37 ++
+ ...08g045-Add-support-for-power-domains.patch |  78 ++++
+ ...8g045-Add-clock-reset-and-power-doma.patch |  65 +++
+ ...k-r9a08g045-cpg-Add-power-domain-IDs.patch |  99 +++++
+ ...as-rzg2l-Extend-power-domain-support.patch | 398 ++++++++++++++++++
+ .../0020-cpg-Fix-compilation-error.patch      |  41 ++
+ .../linux/linux-renesas_6.1.bbappend          |   2 +
+ 22 files changed, 2173 insertions(+)
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0001-i2c-riic-Introduce-helper-functions-for-I2C-read-wri.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0002-i2c-riic-Pass-register-offsets-and-chip-details-as-O.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0003-i2c-riic-Add-support-for-R9A09G057-SoC.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0004-dt-bindings-i2c-renesas-riic-Document-R9A09G057-supp.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0005-i2c-riic-reword-according-to-newest-specification.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0006-i2c-riic-Use-temporary-variable-for-struct-device.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0007-i2c-riic-Call-pm_runtime_get_sync-when-need-to-acces.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0008-i2c-riic-Use-pm_runtime_resume_and_get.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0009-i2c-riic-Enable-runtime-PM-autosuspend-support.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0010-i2c-riic-Add-suspend-resume-support.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0011-i2c-riic-Define-individual-arrays-to-describe-the-re.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0012-i2c-riic-Add-support-for-fast-mode-plus.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0013-arm64-dts-renesas-r9a08g045-Add-I2C-nodes.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0014-arm64-dts-renesas-rzg3s-smarc-Enable-I2C0-node.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0015-Revert-i2c-riic-reword-according-to-newest-specifica.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0016-clk-renesas-r9a08g045-Add-support-for-power-domains.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0020-cpg-Fix-compilation-error.patch
+
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
+new file mode 100644
+index 00000000..a3aa244b
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
+@@ -0,0 +1,20 @@
++patch patches/0001-i2c-riic-Introduce-helper-functions-for-I2C-read-wri.patch
++patch patches/0002-i2c-riic-Pass-register-offsets-and-chip-details-as-O.patch
++patch patches/0003-i2c-riic-Add-support-for-R9A09G057-SoC.patch
++patch patches/0004-dt-bindings-i2c-renesas-riic-Document-R9A09G057-supp.patch
++patch patches/0005-i2c-riic-reword-according-to-newest-specification.patch
++patch patches/0006-i2c-riic-Use-temporary-variable-for-struct-device.patch
++patch patches/0007-i2c-riic-Call-pm_runtime_get_sync-when-need-to-acces.patch
++patch patches/0008-i2c-riic-Use-pm_runtime_resume_and_get.patch
++patch patches/0009-i2c-riic-Enable-runtime-PM-autosuspend-support.patch
++patch patches/0010-i2c-riic-Add-suspend-resume-support.patch
++patch patches/0011-i2c-riic-Define-individual-arrays-to-describe-the-re.patch
++patch patches/0012-i2c-riic-Add-support-for-fast-mode-plus.patch
++patch patches/0013-arm64-dts-renesas-r9a08g045-Add-I2C-nodes.patch
++patch patches/0014-arm64-dts-renesas-rzg3s-smarc-Enable-I2C0-node.patch
++patch patches/0015-Revert-i2c-riic-reword-according-to-newest-specifica.patch
++patch patches/0016-clk-renesas-r9a08g045-Add-support-for-power-domains.patch
++patch patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch
++patch patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch
++patch patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch
++patch patches/0020-cpg-Fix-compilation-error.patch
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0001-i2c-riic-Introduce-helper-functions-for-I2C-read-wri.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0001-i2c-riic-Introduce-helper-functions-for-I2C-read-wri.patch
+new file mode 100644
+index 00000000..20f7c182
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0001-i2c-riic-Introduce-helper-functions-for-I2C-read-wri.patch
+@@ -0,0 +1,187 @@
++From 31175c7e6086569346f117a568fdf8083a6490ce Mon Sep 17 00:00:00 2001
++From: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Date: Tue, 19 Mar 2024 13:25:01 +0000
++Subject: [PATCH 01/14] i2c: riic: Introduce helper functions for I2C
++ read/write operations
++
++Introduce helper functions for performing I2C read and write operations
++in the RIIC driver.
++
++These helper functions lay the groundwork for adding support for the
++RZ/V2H SoC. This is essential because the register offsets for the RZ/V2H
++SoC differ from those of the RZ/A SoC. By abstracting the read and write
++operations, we can seamlessly adapt the driver to support different SoC
++variants without extensive modifications.
++
++This patch is part of the preparation process for integrating support for
++the RZ/V2H SoC into the RIIC driver.
++
++Signed-off-by: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 56 +++++++++++++++++++++--------------
++ 1 file changed, 33 insertions(+), 23 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 849848ccb080..dd937196963b 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -106,9 +106,19 @@ struct riic_irq_desc {
++ 	char *name;
++ };
++ 
+++static inline void riic_writeb(struct riic_dev *riic, u8 val, u8 offset)
+++{
+++	writeb(val, riic->base + offset);
+++}
+++
+++static inline u8 riic_readb(struct riic_dev *riic, u8 offset)
+++{
+++	return readb(riic->base + offset);
+++}
+++
++ static inline void riic_clear_set_bit(struct riic_dev *riic, u8 clear, u8 set, u8 reg)
++ {
++-	writeb((readb(riic->base + reg) & ~clear) | set, riic->base + reg);
+++	riic_writeb(riic, (riic_readb(riic, reg) & ~clear) | set, reg);
++ }
++ 
++ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++@@ -120,7 +130,7 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 
++ 	pm_runtime_get_sync(adap->dev.parent);
++ 
++-	if (readb(riic->base + RIIC_ICCR2) & ICCR2_BBSY) {
+++	if (riic_readb(riic, RIIC_ICCR2) & ICCR2_BBSY) {
++ 		riic->err = -EBUSY;
++ 		goto out;
++ 	}
++@@ -128,7 +138,7 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 	reinit_completion(&riic->msg_done);
++ 	riic->err = 0;
++ 
++-	writeb(0, riic->base + RIIC_ICSR2);
+++	riic_writeb(riic, 0, RIIC_ICSR2);
++ 
++ 	for (i = 0, start_bit = ICCR2_ST; i < num; i++) {
++ 		riic->bytes_left = RIIC_INIT_MSG;
++@@ -136,9 +146,9 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 		riic->msg = &msgs[i];
++ 		riic->is_last = (i == num - 1);
++ 
++-		writeb(ICIER_NAKIE | ICIER_TIE, riic->base + RIIC_ICIER);
+++		riic_writeb(riic, ICIER_NAKIE | ICIER_TIE, RIIC_ICIER);
++ 
++-		writeb(start_bit, riic->base + RIIC_ICCR2);
+++		riic_writeb(riic, start_bit, RIIC_ICCR2);
++ 
++ 		time_left = wait_for_completion_timeout(&riic->msg_done, riic->adapter.timeout);
++ 		if (time_left == 0)
++@@ -192,7 +202,7 @@ static irqreturn_t riic_tdre_isr(int irq, void *data)
++ 	 * value could be moved to the shadow shift register right away. So
++ 	 * this must be after updates to ICIER (where we want to disable TIE)!
++ 	 */
++-	writeb(val, riic->base + RIIC_ICDRT);
+++	riic_writeb(riic, val, RIIC_ICDRT);
++ 
++ 	return IRQ_HANDLED;
++ }
++@@ -201,9 +211,9 @@ static irqreturn_t riic_tend_isr(int irq, void *data)
++ {
++ 	struct riic_dev *riic = data;
++ 
++-	if (readb(riic->base + RIIC_ICSR2) & ICSR2_NACKF) {
+++	if (riic_readb(riic, RIIC_ICSR2) & ICSR2_NACKF) {
++ 		/* We got a NACKIE */
++-		readb(riic->base + RIIC_ICDRR);	/* dummy read */
+++		riic_readb(riic, RIIC_ICDRR);	/* dummy read */
++ 		riic_clear_set_bit(riic, ICSR2_NACKF, 0, RIIC_ICSR2);
++ 		riic->err = -ENXIO;
++ 	} else if (riic->bytes_left) {
++@@ -212,7 +222,7 @@ static irqreturn_t riic_tend_isr(int irq, void *data)
++ 
++ 	if (riic->is_last || riic->err) {
++ 		riic_clear_set_bit(riic, ICIER_TEIE, ICIER_SPIE, RIIC_ICIER);
++-		writeb(ICCR2_SP, riic->base + RIIC_ICCR2);
+++		riic_writeb(riic, ICCR2_SP, RIIC_ICCR2);
++ 	} else {
++ 		/* Transfer is complete, but do not send STOP */
++ 		riic_clear_set_bit(riic, ICIER_TEIE, 0, RIIC_ICIER);
++@@ -231,7 +241,7 @@ static irqreturn_t riic_rdrf_isr(int irq, void *data)
++ 
++ 	if (riic->bytes_left == RIIC_INIT_MSG) {
++ 		riic->bytes_left = riic->msg->len;
++-		readb(riic->base + RIIC_ICDRR);	/* dummy read */
+++		riic_readb(riic, RIIC_ICDRR);	/* dummy read */
++ 		return IRQ_HANDLED;
++ 	}
++ 
++@@ -239,7 +249,7 @@ static irqreturn_t riic_rdrf_isr(int irq, void *data)
++ 		/* STOP must come before we set ACKBT! */
++ 		if (riic->is_last) {
++ 			riic_clear_set_bit(riic, 0, ICIER_SPIE, RIIC_ICIER);
++-			writeb(ICCR2_SP, riic->base + RIIC_ICCR2);
+++			riic_writeb(riic, ICCR2_SP, RIIC_ICCR2);
++ 		}
++ 
++ 		riic_clear_set_bit(riic, 0, ICMR3_ACKBT, RIIC_ICMR3);
++@@ -249,7 +259,7 @@ static irqreturn_t riic_rdrf_isr(int irq, void *data)
++ 	}
++ 
++ 	/* Reading acks the RIE interrupt */
++-	*riic->buf = readb(riic->base + RIIC_ICDRR);
+++	*riic->buf = riic_readb(riic, RIIC_ICDRR);
++ 	riic->buf++;
++ 	riic->bytes_left--;
++ 
++@@ -261,10 +271,10 @@ static irqreturn_t riic_stop_isr(int irq, void *data)
++ 	struct riic_dev *riic = data;
++ 
++ 	/* read back registers to confirm writes have fully propagated */
++-	writeb(0, riic->base + RIIC_ICSR2);
++-	readb(riic->base + RIIC_ICSR2);
++-	writeb(0, riic->base + RIIC_ICIER);
++-	readb(riic->base + RIIC_ICIER);
+++	riic_writeb(riic, 0, RIIC_ICSR2);
+++	riic_readb(riic, RIIC_ICSR2);
+++	riic_writeb(riic, 0, RIIC_ICIER);
+++	riic_readb(riic, RIIC_ICIER);
++ 
++ 	complete(&riic->msg_done);
++ 
++@@ -366,15 +376,15 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 		 t->scl_rise_ns / (1000000000 / rate), cks, brl, brh);
++ 
++ 	/* Changing the order of accessing IICRST and ICE may break things! */
++-	writeb(ICCR1_IICRST | ICCR1_SOWP, riic->base + RIIC_ICCR1);
+++	riic_writeb(riic, ICCR1_IICRST | ICCR1_SOWP, RIIC_ICCR1);
++ 	riic_clear_set_bit(riic, 0, ICCR1_ICE, RIIC_ICCR1);
++ 
++-	writeb(ICMR1_CKS(cks), riic->base + RIIC_ICMR1);
++-	writeb(brh | ICBR_RESERVED, riic->base + RIIC_ICBRH);
++-	writeb(brl | ICBR_RESERVED, riic->base + RIIC_ICBRL);
+++	riic_writeb(riic, ICMR1_CKS(cks), RIIC_ICMR1);
+++	riic_writeb(riic, brh | ICBR_RESERVED, RIIC_ICBRH);
+++	riic_writeb(riic, brl | ICBR_RESERVED, RIIC_ICBRL);
++ 
++-	writeb(0, riic->base + RIIC_ICSER);
++-	writeb(ICMR3_ACKWP | ICMR3_RDRFS, riic->base + RIIC_ICMR3);
+++	riic_writeb(riic, 0, RIIC_ICSER);
+++	riic_writeb(riic, ICMR3_ACKWP | ICMR3_RDRFS, RIIC_ICMR3);
++ 
++ 	riic_clear_set_bit(riic, ICCR1_IICRST, 0, RIIC_ICCR1);
++ 
++@@ -482,7 +492,7 @@ static int riic_i2c_remove(struct platform_device *pdev)
++ 	struct riic_dev *riic = platform_get_drvdata(pdev);
++ 
++ 	pm_runtime_get_sync(&pdev->dev);
++-	writeb(0, riic->base + RIIC_ICIER);
+++	riic_writeb(riic, 0, RIIC_ICIER);
++ 	pm_runtime_put(&pdev->dev);
++ 	i2c_del_adapter(&riic->adapter);
++ 	pm_runtime_disable(&pdev->dev);
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0002-i2c-riic-Pass-register-offsets-and-chip-details-as-O.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0002-i2c-riic-Pass-register-offsets-and-chip-details-as-O.patch
+new file mode 100644
+index 00000000..1fb40da5
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0002-i2c-riic-Pass-register-offsets-and-chip-details-as-O.patch
+@@ -0,0 +1,132 @@
++From 7b86aed0a1dd9ac098927515026f5491c563a677 Mon Sep 17 00:00:00 2001
++From: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Date: Tue, 19 Mar 2024 13:25:02 +0000
++Subject: [PATCH 02/14] i2c: riic: Pass register offsets and chip details as OF
++ data
++
++With an increasing number of SoCs reusing this driver, each with slight
++variations in the RIIC IP, it becomes necessary to support passing these
++details as OF data. This approach simplifies the extension of the driver
++for other SoCs.
++
++This patch lays the groundwork for adding support for the Renesas RZ/V2H
++SoC.
++
++Signed-off-by: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 56 +++++++++++++++++++++++++----------
++ 1 file changed, 41 insertions(+), 15 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index dd937196963b..9849d112a1eb 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -47,18 +47,6 @@
++ #include <linux/pm_runtime.h>
++ #include <linux/reset.h>
++ 
++-#define RIIC_ICCR1	0x00
++-#define RIIC_ICCR2	0x04
++-#define RIIC_ICMR1	0x08
++-#define RIIC_ICMR3	0x10
++-#define RIIC_ICSER	0x18
++-#define RIIC_ICIER	0x1c
++-#define RIIC_ICSR2	0x24
++-#define RIIC_ICBRL	0x34
++-#define RIIC_ICBRH	0x38
++-#define RIIC_ICDRT	0x3c
++-#define RIIC_ICDRR	0x40
++-
++ #define ICCR1_ICE	0x80
++ #define ICCR1_IICRST	0x40
++ #define ICCR1_SOWP	0x10
++@@ -88,6 +76,25 @@
++ 
++ #define RIIC_INIT_MSG	-1
++ 
+++enum riic_reg_list {
+++	RIIC_ICCR1 = 0,
+++	RIIC_ICCR2,
+++	RIIC_ICMR1,
+++	RIIC_ICMR3,
+++	RIIC_ICSER,
+++	RIIC_ICIER,
+++	RIIC_ICSR2,
+++	RIIC_ICBRL,
+++	RIIC_ICBRH,
+++	RIIC_ICDRT,
+++	RIIC_ICDRR,
+++	RIIC_REG_END,
+++};
+++
+++struct riic_of_data {
+++	u8 regs[RIIC_REG_END];
+++};
+++
++ struct riic_dev {
++ 	void __iomem *base;
++ 	u8 *buf;
++@@ -95,6 +102,7 @@ struct riic_dev {
++ 	int bytes_left;
++ 	int err;
++ 	int is_last;
+++	const struct riic_of_data *info;
++ 	struct completion msg_done;
++ 	struct i2c_adapter adapter;
++ 	struct clk *clk;
++@@ -108,12 +116,12 @@ struct riic_irq_desc {
++ 
++ static inline void riic_writeb(struct riic_dev *riic, u8 val, u8 offset)
++ {
++-	writeb(val, riic->base + offset);
+++	writeb(val, riic->base + riic->info->regs[offset]);
++ }
++ 
++ static inline u8 riic_readb(struct riic_dev *riic, u8 offset)
++ {
++-	return readb(riic->base + offset);
+++	return readb(riic->base + riic->info->regs[offset]);
++ }
++ 
++ static inline void riic_clear_set_bit(struct riic_dev *riic, u8 clear, u8 set, u8 reg)
++@@ -454,6 +462,8 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 		}
++ 	}
++ 
+++	riic->info = of_device_get_match_data(&pdev->dev);
+++
++ 	adap = &riic->adapter;
++ 	i2c_set_adapdata(adap, riic);
++ 	strscpy(adap->name, "Renesas RIIC adapter", sizeof(adap->name));
++@@ -500,8 +510,24 @@ static int riic_i2c_remove(struct platform_device *pdev)
++ 	return 0;
++ }
++ 
+++static const struct riic_of_data riic_rz_a_info = {
+++	.regs = {
+++		[RIIC_ICCR1] = 0x00,
+++		[RIIC_ICCR2] = 0x04,
+++		[RIIC_ICMR1] = 0x08,
+++		[RIIC_ICMR3] = 0x10,
+++		[RIIC_ICSER] = 0x18,
+++		[RIIC_ICIER] = 0x1c,
+++		[RIIC_ICSR2] = 0x24,
+++		[RIIC_ICBRL] = 0x34,
+++		[RIIC_ICBRH] = 0x38,
+++		[RIIC_ICDRT] = 0x3c,
+++		[RIIC_ICDRR] = 0x40,
+++	},
+++};
+++
++ static const struct of_device_id riic_i2c_dt_ids[] = {
++-	{ .compatible = "renesas,riic-rz", },
+++	{ .compatible = "renesas,riic-rz", .data = &riic_rz_a_info },
++ 	{ /* Sentinel */ },
++ };
++ 
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0003-i2c-riic-Add-support-for-R9A09G057-SoC.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0003-i2c-riic-Add-support-for-R9A09G057-SoC.patch
+new file mode 100644
+index 00000000..2e867171
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0003-i2c-riic-Add-support-for-R9A09G057-SoC.patch
+@@ -0,0 +1,50 @@
++From 0cfc22adb863ad01e6677ed5af8d6c2f9322b1c3 Mon Sep 17 00:00:00 2001
++From: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Date: Tue, 19 Mar 2024 13:25:03 +0000
++Subject: [PATCH 03/14] i2c: riic: Add support for R9A09G057 SoC
++
++Extend the RIIC driver to support the RZ/V2H(P) ("R9A09G057") SoC. It
++accomplishes this by appending the compatible string list and passing
++the RZ/V2H-specific OF data.
++
++Signed-off-by: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 17 +++++++++++++++++
++ 1 file changed, 17 insertions(+)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 9849d112a1eb..0e5bc326930b 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -526,8 +526,25 @@ static const struct riic_of_data riic_rz_a_info = {
++ 	},
++ };
++ 
+++static const struct riic_of_data riic_rz_v2h_info = {
+++	.regs = {
+++		[RIIC_ICCR1] = 0x00,
+++		[RIIC_ICCR2] = 0x01,
+++		[RIIC_ICMR1] = 0x02,
+++		[RIIC_ICMR3] = 0x04,
+++		[RIIC_ICSER] = 0x06,
+++		[RIIC_ICIER] = 0x07,
+++		[RIIC_ICSR2] = 0x09,
+++		[RIIC_ICBRL] = 0x10,
+++		[RIIC_ICBRH] = 0x11,
+++		[RIIC_ICDRT] = 0x12,
+++		[RIIC_ICDRR] = 0x13,
+++	},
+++};
+++
++ static const struct of_device_id riic_i2c_dt_ids[] = {
++ 	{ .compatible = "renesas,riic-rz", .data = &riic_rz_a_info },
+++	{ .compatible = "renesas,riic-r9a09g057", .data = &riic_rz_v2h_info },
++ 	{ /* Sentinel */ },
++ };
++ 
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0004-dt-bindings-i2c-renesas-riic-Document-R9A09G057-supp.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0004-dt-bindings-i2c-renesas-riic-Document-R9A09G057-supp.patch
+new file mode 100644
+index 00000000..8584fc92
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0004-dt-bindings-i2c-renesas-riic-Document-R9A09G057-supp.patch
+@@ -0,0 +1,62 @@
++From 163ad82354c848f71bed8a22760e46e5b2aca4f6 Mon Sep 17 00:00:00 2001
++From: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Date: Tue, 19 Mar 2024 13:25:00 +0000
++Subject: [PATCH 04/14] dt-bindings: i2c: renesas,riic: Document R9A09G057
++ support
++
++Document support for the I2C Bus Interface (RIIC) available in the
++Renesas RZ/V2H(P) (R9A09G057) SoC.
++
++The RIIC interface in the Renesas RZ/V2H(P) differs from RZ/A in a
++couple of ways:
++- Register offsets for the RZ/V2H(P) SoC differ from those of the
++  RZ/A SoC.
++- RZ/V2H register access is limited to 8-bit, whereas RZ/A supports
++  8/16/32-bit.
++- RZ/V2H has bit differences in the slave address register.
++
++To accommodate these differences, a new compatible string
++"renesas,riic-r9a09g057" is added.
++
++Signed-off-by: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Acked-by: Rob Herring <robh@kernel.org>
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ .../devicetree/bindings/i2c/renesas,riic.yaml | 19 +++++++++++--------
++ 1 file changed, 11 insertions(+), 8 deletions(-)
++
++diff --git a/Documentation/devicetree/bindings/i2c/renesas,riic.yaml b/Documentation/devicetree/bindings/i2c/renesas,riic.yaml
++index d3c0d5c427ac..91ecf17b7a81 100644
++--- a/Documentation/devicetree/bindings/i2c/renesas,riic.yaml
+++++ b/Documentation/devicetree/bindings/i2c/renesas,riic.yaml
++@@ -15,14 +15,17 @@ allOf:
++ 
++ properties:
++   compatible:
++-    items:
++-      - enum:
++-          - renesas,riic-r7s72100   # RZ/A1H
++-          - renesas,riic-r7s9210    # RZ/A2M
++-          - renesas,riic-r9a07g043  # RZ/G2UL
++-          - renesas,riic-r9a07g044  # RZ/G2{L,LC}
++-          - renesas,riic-r9a07g054  # RZ/V2L
++-      - const: renesas,riic-rz      # RZ/A or RZ/G2L
+++    oneOf:
+++      - items:
+++          - enum:
+++              - renesas,riic-r7s72100   # RZ/A1H
+++              - renesas,riic-r7s9210    # RZ/A2M
+++              - renesas,riic-r9a07g043  # RZ/G2UL and RZ/Five
+++              - renesas,riic-r9a07g044  # RZ/G2{L,LC}
+++              - renesas,riic-r9a07g054  # RZ/V2L
+++          - const: renesas,riic-rz      # RZ/A or RZ/G2L
+++
+++      - const: renesas,riic-r9a09g057   # RZ/V2H(P)
++ 
++   reg:
++     maxItems: 1
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0005-i2c-riic-reword-according-to-newest-specification.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0005-i2c-riic-reword-according-to-newest-specification.patch
+new file mode 100644
+index 00000000..ccd1d152
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0005-i2c-riic-reword-according-to-newest-specification.patch
+@@ -0,0 +1,45 @@
++From 37eb3a580f130f746862e2704d7f17607285c462 Mon Sep 17 00:00:00 2001
++From: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Date: Sat, 6 Jul 2024 13:20:41 +0200
++Subject: [PATCH 05/14] i2c: riic: reword according to newest specification
++
++Change the wording of this driver wrt. the newest I2C v7 and SMBus 3.2
++specifications and replace "master/slave" with more appropriate terms.
++
++Signed-off-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Reviewed-by: Andi Shyti <andi.shyti@kernel.org>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 8 ++++----
++ 1 file changed, 4 insertions(+), 4 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 0e5bc326930b..fe41497e7c59 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -12,9 +12,9 @@
++  *
++  * 1) The main xfer routine kicks off a transmission by putting the start bit
++  * (or repeated start) on the bus and enabling the transmit interrupt (TIE)
++- * since we need to send the slave address + RW bit in every case.
+++ * since we need to send the target address + RW bit in every case.
++  *
++- * 2) TIE sends slave address + RW bit and selects how to continue.
+++ * 2) TIE sends target address + RW bit and selects how to continue.
++  *
++  * 3a) Write case: We keep utilizing TIE as long as we have data to send. If we
++  * are done, we switch over to the transmission done interrupt (TEIE) and mark
++@@ -295,8 +295,8 @@ static u32 riic_func(struct i2c_adapter *adap)
++ }
++ 
++ static const struct i2c_algorithm riic_algo = {
++-	.master_xfer	= riic_xfer,
++-	.functionality	= riic_func,
+++	.xfer = riic_xfer,
+++	.functionality = riic_func,
++ };
++ 
++ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0006-i2c-riic-Use-temporary-variable-for-struct-device.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0006-i2c-riic-Use-temporary-variable-for-struct-device.patch
+new file mode 100644
+index 00000000..daf4ac43
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0006-i2c-riic-Use-temporary-variable-for-struct-device.patch
+@@ -0,0 +1,177 @@
++From 1221db09e8002c97c1ad5a3a07756172ada3b380 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:08 +0300
++Subject: [PATCH 06/14] i2c: riic: Use temporary variable for struct device
++
++Use a temporary variable for the struct device pointers to avoid
++dereferencing.
++
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 49 +++++++++++++++++++----------------
++ 1 file changed, 26 insertions(+), 23 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index fe41497e7c59..7c81874c37f4 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -132,11 +132,12 @@ static inline void riic_clear_set_bit(struct riic_dev *riic, u8 clear, u8 set, u
++ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ {
++ 	struct riic_dev *riic = i2c_get_adapdata(adap);
+++	struct device *dev = adap->dev.parent;
++ 	unsigned long time_left;
++ 	int i;
++ 	u8 start_bit;
++ 
++-	pm_runtime_get_sync(adap->dev.parent);
+++	pm_runtime_get_sync(dev);
++ 
++ 	if (riic_readb(riic, RIIC_ICCR2) & ICCR2_BBSY) {
++ 		riic->err = -EBUSY;
++@@ -169,7 +170,7 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 	}
++ 
++  out:
++-	pm_runtime_put(adap->dev.parent);
+++	pm_runtime_put(dev);
++ 
++ 	return riic->err ?: num;
++ }
++@@ -304,8 +305,9 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 	int ret = 0;
++ 	unsigned long rate;
++ 	int total_ticks, cks, brl, brh;
+++	struct device *dev = riic->adapter.dev.parent;
++ 
++-	pm_runtime_get_sync(riic->adapter.dev.parent);
+++	pm_runtime_get_sync(dev);
++ 
++ 	if (t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ) {
++ 		dev_err(&riic->adapter.dev,
++@@ -397,7 +399,7 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 	riic_clear_set_bit(riic, ICCR1_IICRST, 0, RIIC_ICCR1);
++ 
++ out:
++-	pm_runtime_put(riic->adapter.dev.parent);
+++	pm_runtime_put(dev);
++ 	return ret;
++ }
++ 
++@@ -416,13 +418,14 @@ static void riic_reset_control_assert(void *data)
++ 
++ static int riic_i2c_probe(struct platform_device *pdev)
++ {
+++	struct device *dev = &pdev->dev;
++ 	struct riic_dev *riic;
++ 	struct i2c_adapter *adap;
++ 	struct i2c_timings i2c_t;
++ 	struct reset_control *rstc;
++ 	int i, ret;
++ 
++-	riic = devm_kzalloc(&pdev->dev, sizeof(*riic), GFP_KERNEL);
+++	riic = devm_kzalloc(dev, sizeof(*riic), GFP_KERNEL);
++ 	if (!riic)
++ 		return -ENOMEM;
++ 
++@@ -430,22 +433,22 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 	if (IS_ERR(riic->base))
++ 		return PTR_ERR(riic->base);
++ 
++-	riic->clk = devm_clk_get(&pdev->dev, NULL);
+++	riic->clk = devm_clk_get(dev, NULL);
++ 	if (IS_ERR(riic->clk)) {
++-		dev_err(&pdev->dev, "missing controller clock");
+++		dev_err(dev, "missing controller clock");
++ 		return PTR_ERR(riic->clk);
++ 	}
++ 
++-	rstc = devm_reset_control_get_optional_exclusive(&pdev->dev, NULL);
+++	rstc = devm_reset_control_get_optional_exclusive(dev, NULL);
++ 	if (IS_ERR(rstc))
++-		return dev_err_probe(&pdev->dev, PTR_ERR(rstc),
+++		return dev_err_probe(dev, PTR_ERR(rstc),
++ 				     "Error: missing reset ctrl\n");
++ 
++ 	ret = reset_control_deassert(rstc);
++ 	if (ret)
++ 		return ret;
++ 
++-	ret = devm_add_action_or_reset(&pdev->dev, riic_reset_control_assert, rstc);
+++	ret = devm_add_action_or_reset(dev, riic_reset_control_assert, rstc);
++ 	if (ret)
++ 		return ret;
++ 
++@@ -454,29 +457,29 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 		if (ret < 0)
++ 			return ret;
++ 
++-		ret = devm_request_irq(&pdev->dev, ret, riic_irqs[i].isr,
+++		ret = devm_request_irq(dev, ret, riic_irqs[i].isr,
++ 				       0, riic_irqs[i].name, riic);
++ 		if (ret) {
++-			dev_err(&pdev->dev, "failed to request irq %s\n", riic_irqs[i].name);
+++			dev_err(dev, "failed to request irq %s\n", riic_irqs[i].name);
++ 			return ret;
++ 		}
++ 	}
++ 
++-	riic->info = of_device_get_match_data(&pdev->dev);
+++	riic->info = of_device_get_match_data(dev);
++ 
++ 	adap = &riic->adapter;
++ 	i2c_set_adapdata(adap, riic);
++ 	strscpy(adap->name, "Renesas RIIC adapter", sizeof(adap->name));
++ 	adap->owner = THIS_MODULE;
++ 	adap->algo = &riic_algo;
++-	adap->dev.parent = &pdev->dev;
++-	adap->dev.of_node = pdev->dev.of_node;
+++	adap->dev.parent = dev;
+++	adap->dev.of_node = dev->of_node;
++ 
++ 	init_completion(&riic->msg_done);
++ 
++-	i2c_parse_fw_timings(&pdev->dev, &i2c_t, true);
+++	i2c_parse_fw_timings(dev, &i2c_t, true);
++ 
++-	pm_runtime_enable(&pdev->dev);
+++	pm_runtime_enable(dev);
++ 
++ 	ret = riic_init_hw(riic, &i2c_t);
++ 	if (ret)
++@@ -488,24 +491,24 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 
++ 	platform_set_drvdata(pdev, riic);
++ 
++-	dev_info(&pdev->dev, "registered with %dHz bus speed\n",
++-		 i2c_t.bus_freq_hz);
+++	dev_info(dev, "registered with %dHz bus speed\n", i2c_t.bus_freq_hz);
++ 	return 0;
++ 
++ out:
++-	pm_runtime_disable(&pdev->dev);
+++	pm_runtime_disable(dev);
++ 	return ret;
++ }
++ 
++ static int riic_i2c_remove(struct platform_device *pdev)
++ {
++ 	struct riic_dev *riic = platform_get_drvdata(pdev);
+++	struct device *dev = &pdev->dev;
++ 
++-	pm_runtime_get_sync(&pdev->dev);
+++	pm_runtime_get_sync(dev);
++ 	riic_writeb(riic, 0, RIIC_ICIER);
++-	pm_runtime_put(&pdev->dev);
+++	pm_runtime_put(dev);
++ 	i2c_del_adapter(&riic->adapter);
++-	pm_runtime_disable(&pdev->dev);
+++	pm_runtime_disable(dev);
++ 
++ 	return 0;
++ }
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0007-i2c-riic-Call-pm_runtime_get_sync-when-need-to-acces.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0007-i2c-riic-Call-pm_runtime_get_sync-when-need-to-acces.patch
+new file mode 100644
+index 00000000..46d89cc3
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0007-i2c-riic-Call-pm_runtime_get_sync-when-need-to-acces.patch
+@@ -0,0 +1,76 @@
++From c85dd71978ce18b30834dfac41ba28d574e6172f Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:09 +0300
++Subject: [PATCH 07/14] i2c: riic: Call pm_runtime_get_sync() when need to
++ access registers
++
++There is no need to runtime resume the device as long as the IP registers
++are not accessed. Calling pm_runtime_get_sync() at the register access
++time leads to a simpler error path.
++
++Reviewed-by: Andi Shyti <andi.shyti@kernel.org>
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 14 +++++---------
++ 1 file changed, 5 insertions(+), 9 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 7c81874c37f4..d65b8d601dd8 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -302,19 +302,15 @@ static const struct i2c_algorithm riic_algo = {
++ 
++ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ {
++-	int ret = 0;
++ 	unsigned long rate;
++ 	int total_ticks, cks, brl, brh;
++ 	struct device *dev = riic->adapter.dev.parent;
++ 
++-	pm_runtime_get_sync(dev);
++-
++ 	if (t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ) {
++ 		dev_err(&riic->adapter.dev,
++ 			"unsupported bus speed (%dHz). %d max\n",
++ 			t->bus_freq_hz, I2C_MAX_FAST_MODE_FREQ);
++-		ret = -EINVAL;
++-		goto out;
+++		return -EINVAL;
++ 	}
++ 
++ 	rate = clk_get_rate(riic->clk);
++@@ -352,8 +348,7 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 	if (brl > (0x1F + 3)) {
++ 		dev_err(&riic->adapter.dev, "invalid speed (%lu). Too slow.\n",
++ 			(unsigned long)t->bus_freq_hz);
++-		ret = -EINVAL;
++-		goto out;
+++		return -EINVAL;
++ 	}
++ 
++ 	brh = total_ticks - brl;
++@@ -385,6 +380,8 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 		 t->scl_fall_ns / (1000000000 / rate),
++ 		 t->scl_rise_ns / (1000000000 / rate), cks, brl, brh);
++ 
+++	pm_runtime_get_sync(dev);
+++
++ 	/* Changing the order of accessing IICRST and ICE may break things! */
++ 	riic_writeb(riic, ICCR1_IICRST | ICCR1_SOWP, RIIC_ICCR1);
++ 	riic_clear_set_bit(riic, 0, ICCR1_ICE, RIIC_ICCR1);
++@@ -398,9 +395,8 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 
++ 	riic_clear_set_bit(riic, ICCR1_IICRST, 0, RIIC_ICCR1);
++ 
++-out:
++ 	pm_runtime_put(dev);
++-	return ret;
+++	return 0;
++ }
++ 
++ static struct riic_irq_desc riic_irqs[] = {
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0008-i2c-riic-Use-pm_runtime_resume_and_get.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0008-i2c-riic-Use-pm_runtime_resume_and_get.patch
+new file mode 100644
+index 00000000..8c6e1aee
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0008-i2c-riic-Use-pm_runtime_resume_and_get.patch
+@@ -0,0 +1,74 @@
++From 2a7bac49b1eb2a088fddff403f9fc767fa416bfe Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:10 +0300
++Subject: [PATCH 08/14] i2c: riic: Use pm_runtime_resume_and_get()
++
++pm_runtime_get_sync() may return with error. In case it returns with error
++dev->power.usage_count needs to be decremented. pm_runtime_resume_and_get()
++takes care of this. Thus use it.
++
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 20 ++++++++++++++------
++ 1 file changed, 14 insertions(+), 6 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index d65b8d601dd8..022231c6e409 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -134,10 +134,12 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 	struct riic_dev *riic = i2c_get_adapdata(adap);
++ 	struct device *dev = adap->dev.parent;
++ 	unsigned long time_left;
++-	int i;
+++	int i, ret;
++ 	u8 start_bit;
++ 
++-	pm_runtime_get_sync(dev);
+++	ret = pm_runtime_resume_and_get(dev);
+++	if (ret)
+++		return ret;
++ 
++ 	if (riic_readb(riic, RIIC_ICCR2) & ICCR2_BBSY) {
++ 		riic->err = -EBUSY;
++@@ -302,6 +304,7 @@ static const struct i2c_algorithm riic_algo = {
++ 
++ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ {
+++	int ret;
++ 	unsigned long rate;
++ 	int total_ticks, cks, brl, brh;
++ 	struct device *dev = riic->adapter.dev.parent;
++@@ -380,7 +383,9 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 		 t->scl_fall_ns / (1000000000 / rate),
++ 		 t->scl_rise_ns / (1000000000 / rate), cks, brl, brh);
++ 
++-	pm_runtime_get_sync(dev);
+++	ret = pm_runtime_resume_and_get(dev);
+++	if (ret)
+++		return ret;
++ 
++ 	/* Changing the order of accessing IICRST and ICE may break things! */
++ 	riic_writeb(riic, ICCR1_IICRST | ICCR1_SOWP, RIIC_ICCR1);
++@@ -499,10 +504,13 @@ static int riic_i2c_remove(struct platform_device *pdev)
++ {
++ 	struct riic_dev *riic = platform_get_drvdata(pdev);
++ 	struct device *dev = &pdev->dev;
+++	int ret;
++ 
++-	pm_runtime_get_sync(dev);
++-	riic_writeb(riic, 0, RIIC_ICIER);
++-	pm_runtime_put(dev);
+++	ret = pm_runtime_resume_and_get(dev);
+++	if (!ret) {
+++		riic_writeb(riic, 0, RIIC_ICIER);
+++		pm_runtime_put(dev);
+++	}
++ 	i2c_del_adapter(&riic->adapter);
++ 	pm_runtime_disable(dev);
++ 
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0009-i2c-riic-Enable-runtime-PM-autosuspend-support.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0009-i2c-riic-Enable-runtime-PM-autosuspend-support.patch
+new file mode 100644
+index 00000000..5b1beaee
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0009-i2c-riic-Enable-runtime-PM-autosuspend-support.patch
+@@ -0,0 +1,73 @@
++From 86bde7600220883e9d1aa6696e50b9e14368be54 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:11 +0300
++Subject: [PATCH 09/14] i2c: riic: Enable runtime PM autosuspend support
++
++Enable runtime PM autosuspend support for the RIIC driver. With this, in
++case there are consecutive xfer requests the device wouldn't be runtime
++enabled/disabled after each consecutive xfer but after the
++the delay configured by user. With this, we can avoid touching hardware
++registers involved in runtime PM suspend/resume saving in this way some
++cycles. The default chosen autosuspend delay is zero to keep the
++previous driver behavior.
++
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 11 +++++++++--
++ 1 file changed, 9 insertions(+), 2 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 022231c6e409..b16fa1645bc3 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -172,7 +172,8 @@ static int riic_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
++ 	}
++ 
++  out:
++-	pm_runtime_put(dev);
+++	pm_runtime_mark_last_busy(dev);
+++	pm_runtime_put_autosuspend(dev);
++ 
++ 	return riic->err ?: num;
++ }
++@@ -400,7 +401,8 @@ static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
++ 
++ 	riic_clear_set_bit(riic, ICCR1_IICRST, 0, RIIC_ICCR1);
++ 
++-	pm_runtime_put(dev);
+++	pm_runtime_mark_last_busy(dev);
+++	pm_runtime_put_autosuspend(dev);
++ 	return 0;
++ }
++ 
++@@ -480,6 +482,9 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 
++ 	i2c_parse_fw_timings(dev, &i2c_t, true);
++ 
+++	/* Default 0 to save power. Can be overridden via sysfs for lower latency. */
+++	pm_runtime_set_autosuspend_delay(dev, 0);
+++	pm_runtime_use_autosuspend(dev);
++ 	pm_runtime_enable(dev);
++ 
++ 	ret = riic_init_hw(riic, &i2c_t);
++@@ -497,6 +502,7 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 
++ out:
++ 	pm_runtime_disable(dev);
+++	pm_runtime_dont_use_autosuspend(dev);
++ 	return ret;
++ }
++ 
++@@ -513,6 +519,7 @@ static int riic_i2c_remove(struct platform_device *pdev)
++ 	}
++ 	i2c_del_adapter(&riic->adapter);
++ 	pm_runtime_disable(dev);
+++	pm_runtime_dont_use_autosuspend(dev);
++ 
++ 	return 0;
++ }
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0010-i2c-riic-Add-suspend-resume-support.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0010-i2c-riic-Add-suspend-resume-support.patch
+new file mode 100644
+index 00000000..5eec8821
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0010-i2c-riic-Add-suspend-resume-support.patch
+@@ -0,0 +1,171 @@
++From b40d751a48e15d9b7cbeeb64b53bb39bdf3ab541 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:12 +0300
++Subject: [PATCH 10/14] i2c: riic: Add suspend/resume support
++
++Add suspend/resume support for the RIIC driver. This is necessary for the
++Renesas RZ/G3S SoC which support suspend to deep sleep state where power
++to most of the SoC components is turned off. As a result the I2C controller
++needs to be reconfigured after suspend/resume. For this, the reset line
++was stored in the driver private data structure as well as i2c timings.
++The reset line and I2C timings are necessary to re-initialize the
++controller after resume.
++
++Reviewed-by: Andi Shyti <andi.shyti@kernel.org>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 73 +++++++++++++++++++++++++++++------
++ 1 file changed, 62 insertions(+), 11 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index b16fa1645bc3..e116e03d400e 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -106,6 +106,8 @@ struct riic_dev {
++ 	struct completion msg_done;
++ 	struct i2c_adapter adapter;
++ 	struct clk *clk;
+++	struct reset_control *rstc;
+++	struct i2c_timings i2c_t;
++ };
++ 
++ struct riic_irq_desc {
++@@ -303,11 +305,12 @@ static const struct i2c_algorithm riic_algo = {
++ 	.functionality = riic_func,
++ };
++ 
++-static int riic_init_hw(struct riic_dev *riic, struct i2c_timings *t)
+++static int riic_init_hw(struct riic_dev *riic)
++ {
++ 	int ret;
++ 	unsigned long rate;
++ 	int total_ticks, cks, brl, brh;
+++	struct i2c_timings *t = &riic->i2c_t;
++ 	struct device *dev = riic->adapter.dev.parent;
++ 
++ 	if (t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ) {
++@@ -424,8 +427,6 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 	struct device *dev = &pdev->dev;
++ 	struct riic_dev *riic;
++ 	struct i2c_adapter *adap;
++-	struct i2c_timings i2c_t;
++-	struct reset_control *rstc;
++ 	int i, ret;
++ 
++ 	riic = devm_kzalloc(dev, sizeof(*riic), GFP_KERNEL);
++@@ -442,16 +443,16 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 		return PTR_ERR(riic->clk);
++ 	}
++ 
++-	rstc = devm_reset_control_get_optional_exclusive(dev, NULL);
++-	if (IS_ERR(rstc))
++-		return dev_err_probe(dev, PTR_ERR(rstc),
+++	riic->rstc = devm_reset_control_get_optional_exclusive(dev, NULL);
+++	if (IS_ERR(riic->rstc))
+++		return dev_err_probe(dev, PTR_ERR(riic->rstc),
++ 				     "Error: missing reset ctrl\n");
++ 
++-	ret = reset_control_deassert(rstc);
+++	ret = reset_control_deassert(riic->rstc);
++ 	if (ret)
++ 		return ret;
++ 
++-	ret = devm_add_action_or_reset(dev, riic_reset_control_assert, rstc);
+++	ret = devm_add_action_or_reset(dev, riic_reset_control_assert, riic->rstc);
++ 	if (ret)
++ 		return ret;
++ 
++@@ -480,14 +481,14 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 
++ 	init_completion(&riic->msg_done);
++ 
++-	i2c_parse_fw_timings(dev, &i2c_t, true);
+++	i2c_parse_fw_timings(dev, &riic->i2c_t, true);
++ 
++ 	/* Default 0 to save power. Can be overridden via sysfs for lower latency. */
++ 	pm_runtime_set_autosuspend_delay(dev, 0);
++ 	pm_runtime_use_autosuspend(dev);
++ 	pm_runtime_enable(dev);
++ 
++-	ret = riic_init_hw(riic, &i2c_t);
+++	ret = riic_init_hw(riic);
++ 	if (ret)
++ 		goto out;
++ 
++@@ -497,7 +498,7 @@ static int riic_i2c_probe(struct platform_device *pdev)
++ 
++ 	platform_set_drvdata(pdev, riic);
++ 
++-	dev_info(dev, "registered with %dHz bus speed\n", i2c_t.bus_freq_hz);
+++	dev_info(dev, "registered with %dHz bus speed\n", riic->i2c_t.bus_freq_hz);
++ 	return 0;
++ 
++ out:
++@@ -556,6 +557,55 @@ static const struct riic_of_data riic_rz_v2h_info = {
++ 	},
++ };
++ 
+++static int riic_i2c_suspend(struct device *dev)
+++{
+++	struct riic_dev *riic = dev_get_drvdata(dev);
+++	int ret;
+++
+++	ret = pm_runtime_resume_and_get(dev);
+++	if (ret)
+++		return ret;
+++
+++	i2c_mark_adapter_suspended(&riic->adapter);
+++
+++	/* Disable output on SDA, SCL pins. */
+++	riic_clear_set_bit(riic, ICCR1_ICE, 0, RIIC_ICCR1);
+++
+++	pm_runtime_mark_last_busy(dev);
+++	pm_runtime_put_sync(dev);
+++
+++	return reset_control_assert(riic->rstc);
+++}
+++
+++static int riic_i2c_resume(struct device *dev)
+++{
+++	struct riic_dev *riic = dev_get_drvdata(dev);
+++	int ret;
+++
+++	ret = reset_control_deassert(riic->rstc);
+++	if (ret)
+++		return ret;
+++
+++	ret = riic_init_hw(riic);
+++	if (ret) {
+++		/*
+++		 * In case this happens there is no way to recover from this
+++		 * state. The driver will remain loaded. We want to avoid
+++		 * keeping the reset line de-asserted for no reason.
+++		 */
+++		reset_control_assert(riic->rstc);
+++		return ret;
+++	}
+++
+++	i2c_mark_adapter_resumed(&riic->adapter);
+++
+++	return 0;
+++}
+++
+++static const struct dev_pm_ops riic_i2c_pm_ops = {
+++	SYSTEM_SLEEP_PM_OPS(riic_i2c_suspend, riic_i2c_resume)
+++};
+++
++ static const struct of_device_id riic_i2c_dt_ids[] = {
++ 	{ .compatible = "renesas,riic-rz", .data = &riic_rz_a_info },
++ 	{ .compatible = "renesas,riic-r9a09g057", .data = &riic_rz_v2h_info },
++@@ -568,6 +618,7 @@ static struct platform_driver riic_i2c_driver = {
++ 	.driver		= {
++ 		.name	= "i2c-riic",
++ 		.of_match_table = riic_i2c_dt_ids,
+++		.pm	= pm_ptr(&riic_i2c_pm_ops),
++ 	},
++ };
++ 
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0011-i2c-riic-Define-individual-arrays-to-describe-the-re.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0011-i2c-riic-Define-individual-arrays-to-describe-the-re.patch
+new file mode 100644
+index 00000000..5c7ba43f
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0011-i2c-riic-Define-individual-arrays-to-describe-the-re.patch
+@@ -0,0 +1,101 @@
++From 467ea3ad475c05d0a7ee28dad6a5a41263e70e82 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:13 +0300
++Subject: [PATCH 11/14] i2c: riic: Define individual arrays to describe the
++ register offsets
++
++Define individual arrays to describe the register offsets. In this way
++we can describe different IP variants that share the same register offsets
++but have differences in other characteristics. Commit prepares for the
++addition of fast mode plus.
++
++Reviewed-by: Wolfram Sang <wsa+renesas@sang-engineering.com>
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 58 +++++++++++++++++++----------------
++ 1 file changed, 31 insertions(+), 27 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index e116e03d400e..2e1990668a7f 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -92,7 +92,7 @@ enum riic_reg_list {
++ };
++ 
++ struct riic_of_data {
++-	u8 regs[RIIC_REG_END];
+++	const u8 *regs;
++ };
++ 
++ struct riic_dev {
++@@ -525,36 +525,40 @@ static int riic_i2c_remove(struct platform_device *pdev)
++ 	return 0;
++ }
++ 
+++static const u8 riic_rz_a_regs[RIIC_REG_END] = {
+++	[RIIC_ICCR1] = 0x00,
+++	[RIIC_ICCR2] = 0x04,
+++	[RIIC_ICMR1] = 0x08,
+++	[RIIC_ICMR3] = 0x10,
+++	[RIIC_ICSER] = 0x18,
+++	[RIIC_ICIER] = 0x1c,
+++	[RIIC_ICSR2] = 0x24,
+++	[RIIC_ICBRL] = 0x34,
+++	[RIIC_ICBRH] = 0x38,
+++	[RIIC_ICDRT] = 0x3c,
+++	[RIIC_ICDRR] = 0x40,
+++};
+++
++ static const struct riic_of_data riic_rz_a_info = {
++-	.regs = {
++-		[RIIC_ICCR1] = 0x00,
++-		[RIIC_ICCR2] = 0x04,
++-		[RIIC_ICMR1] = 0x08,
++-		[RIIC_ICMR3] = 0x10,
++-		[RIIC_ICSER] = 0x18,
++-		[RIIC_ICIER] = 0x1c,
++-		[RIIC_ICSR2] = 0x24,
++-		[RIIC_ICBRL] = 0x34,
++-		[RIIC_ICBRH] = 0x38,
++-		[RIIC_ICDRT] = 0x3c,
++-		[RIIC_ICDRR] = 0x40,
++-	},
+++	.regs = riic_rz_a_regs,
+++};
+++
+++static const u8 riic_rz_v2h_regs[RIIC_REG_END] = {
+++	[RIIC_ICCR1] = 0x00,
+++	[RIIC_ICCR2] = 0x01,
+++	[RIIC_ICMR1] = 0x02,
+++	[RIIC_ICMR3] = 0x04,
+++	[RIIC_ICSER] = 0x06,
+++	[RIIC_ICIER] = 0x07,
+++	[RIIC_ICSR2] = 0x09,
+++	[RIIC_ICBRL] = 0x10,
+++	[RIIC_ICBRH] = 0x11,
+++	[RIIC_ICDRT] = 0x12,
+++	[RIIC_ICDRR] = 0x13,
++ };
++ 
++ static const struct riic_of_data riic_rz_v2h_info = {
++-	.regs = {
++-		[RIIC_ICCR1] = 0x00,
++-		[RIIC_ICCR2] = 0x01,
++-		[RIIC_ICMR1] = 0x02,
++-		[RIIC_ICMR3] = 0x04,
++-		[RIIC_ICSER] = 0x06,
++-		[RIIC_ICIER] = 0x07,
++-		[RIIC_ICSR2] = 0x09,
++-		[RIIC_ICBRL] = 0x10,
++-		[RIIC_ICBRH] = 0x11,
++-		[RIIC_ICDRT] = 0x12,
++-		[RIIC_ICDRR] = 0x13,
++-	},
+++	.regs = riic_rz_v2h_regs,
++ };
++ 
++ static int riic_i2c_suspend(struct device *dev)
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0012-i2c-riic-Add-support-for-fast-mode-plus.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0012-i2c-riic-Add-support-for-fast-mode-plus.patch
+new file mode 100644
+index 00000000..84f2fee6
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0012-i2c-riic-Add-support-for-fast-mode-plus.patch
+@@ -0,0 +1,125 @@
++From 684e7023b1cc7033a8a6e782ff6feb228e83a1fc Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:15 +0300
++Subject: [PATCH 12/14] i2c: riic: Add support for fast mode plus
++
++Fast mode plus is available on most of the IP variants that RIIC driver
++is working with. The exception is (according to HW manuals of the SoCs
++where this IP is available) the Renesas RZ/A1H. For this, patch
++introduces the struct riic_of_data::fast_mode_plus.
++
++Fast mode plus was tested on RZ/G3S, RZ/G2{L,UL,LC}, RZ/Five by
++instantiating the RIIC frequency to 1MHz and issuing i2c reads on the
++fast mode plus capable devices (and the i2c clock frequency was checked on
++RZ/G3S).
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Signed-off-by: Andi Shyti <andi.shyti@kernel.org>
++---
++ drivers/i2c/busses/i2c-riic.c | 24 ++++++++++++++++++++++--
++ 1 file changed, 22 insertions(+), 2 deletions(-)
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 2e1990668a7f..59a84107e28c 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -64,6 +64,8 @@
++ #define ICMR3_ACKWP	0x10
++ #define ICMR3_ACKBT	0x08
++ 
+++#define ICFER_FMPE	0x80
+++
++ #define ICIER_TIE	0x80
++ #define ICIER_TEIE	0x40
++ #define ICIER_RIE	0x20
++@@ -81,6 +83,7 @@ enum riic_reg_list {
++ 	RIIC_ICCR2,
++ 	RIIC_ICMR1,
++ 	RIIC_ICMR3,
+++	RIIC_ICFER,
++ 	RIIC_ICSER,
++ 	RIIC_ICIER,
++ 	RIIC_ICSR2,
++@@ -93,6 +96,7 @@ enum riic_reg_list {
++ 
++ struct riic_of_data {
++ 	const u8 *regs;
+++	bool fast_mode_plus;
++ };
++ 
++ struct riic_dev {
++@@ -312,11 +316,15 @@ static int riic_init_hw(struct riic_dev *riic)
++ 	int total_ticks, cks, brl, brh;
++ 	struct i2c_timings *t = &riic->i2c_t;
++ 	struct device *dev = riic->adapter.dev.parent;
+++	bool fast_mode_plus = riic->info->fast_mode_plus;
++ 
++-	if (t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ) {
+++	if ((!fast_mode_plus && t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ) ||
+++	    (fast_mode_plus && t->bus_freq_hz > I2C_MAX_FAST_MODE_PLUS_FREQ)) {
++ 		dev_err(&riic->adapter.dev,
++ 			"unsupported bus speed (%dHz). %d max\n",
++-			t->bus_freq_hz, I2C_MAX_FAST_MODE_FREQ);
+++			t->bus_freq_hz,
+++			fast_mode_plus ? I2C_MAX_FAST_MODE_PLUS_FREQ :
+++					 I2C_MAX_FAST_MODE_FREQ);
++ 		return -EINVAL;
++ 	}
++ 
++@@ -402,6 +410,9 @@ static int riic_init_hw(struct riic_dev *riic)
++ 	riic_writeb(riic, 0, RIIC_ICSER);
++ 	riic_writeb(riic, ICMR3_ACKWP | ICMR3_RDRFS, RIIC_ICMR3);
++ 
+++	if (fast_mode_plus && t->bus_freq_hz > I2C_MAX_FAST_MODE_FREQ)
+++		riic_clear_set_bit(riic, 0, ICFER_FMPE, RIIC_ICFER);
+++
++ 	riic_clear_set_bit(riic, ICCR1_IICRST, 0, RIIC_ICCR1);
++ 
++ 	pm_runtime_mark_last_busy(dev);
++@@ -530,6 +541,7 @@ static const u8 riic_rz_a_regs[RIIC_REG_END] = {
++ 	[RIIC_ICCR2] = 0x04,
++ 	[RIIC_ICMR1] = 0x08,
++ 	[RIIC_ICMR3] = 0x10,
+++	[RIIC_ICFER] = 0x14,
++ 	[RIIC_ICSER] = 0x18,
++ 	[RIIC_ICIER] = 0x1c,
++ 	[RIIC_ICSR2] = 0x24,
++@@ -541,6 +553,11 @@ static const u8 riic_rz_a_regs[RIIC_REG_END] = {
++ 
++ static const struct riic_of_data riic_rz_a_info = {
++ 	.regs = riic_rz_a_regs,
+++	.fast_mode_plus = true,
+++};
+++
+++static const struct riic_of_data riic_rz_a1h_info = {
+++	.regs = riic_rz_a_regs,
++ };
++ 
++ static const u8 riic_rz_v2h_regs[RIIC_REG_END] = {
++@@ -548,6 +565,7 @@ static const u8 riic_rz_v2h_regs[RIIC_REG_END] = {
++ 	[RIIC_ICCR2] = 0x01,
++ 	[RIIC_ICMR1] = 0x02,
++ 	[RIIC_ICMR3] = 0x04,
+++	[RIIC_ICFER] = 0x05,
++ 	[RIIC_ICSER] = 0x06,
++ 	[RIIC_ICIER] = 0x07,
++ 	[RIIC_ICSR2] = 0x09,
++@@ -559,6 +577,7 @@ static const u8 riic_rz_v2h_regs[RIIC_REG_END] = {
++ 
++ static const struct riic_of_data riic_rz_v2h_info = {
++ 	.regs = riic_rz_v2h_regs,
+++	.fast_mode_plus = true,
++ };
++ 
++ static int riic_i2c_suspend(struct device *dev)
++@@ -612,6 +631,7 @@ static const struct dev_pm_ops riic_i2c_pm_ops = {
++ 
++ static const struct of_device_id riic_i2c_dt_ids[] = {
++ 	{ .compatible = "renesas,riic-rz", .data = &riic_rz_a_info },
+++	{ .compatible = "renesas,riic-r7s72100", .data =  &riic_rz_a1h_info, },
++ 	{ .compatible = "renesas,riic-r9a09g057", .data = &riic_rz_v2h_info },
++ 	{ /* Sentinel */ },
++ };
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0013-arm64-dts-renesas-r9a08g045-Add-I2C-nodes.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0013-arm64-dts-renesas-r9a08g045-Add-I2C-nodes.patch
+new file mode 100644
+index 00000000..c6ade093
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0013-arm64-dts-renesas-r9a08g045-Add-I2C-nodes.patch
+@@ -0,0 +1,117 @@
++From a1e55d78bc1e6a5c0340b6a70355a7fdf14f1034 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:16 +0300
++Subject: [PATCH 13/14] arm64: dts: renesas: r9a08g045: Add I2C nodes
++
++The Renesas RZ/G3S SoC has 4 I2C channels. Add DT nodes for them.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Link: https://lore.kernel.org/20240820101918.2384635-10-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ arch/arm64/boot/dts/renesas/r9a08g045.dtsi | 88 ++++++++++++++++++++++
++ 1 file changed, 88 insertions(+)
++
++diff --git a/arch/arm64/boot/dts/renesas/r9a08g045.dtsi b/arch/arm64/boot/dts/renesas/r9a08g045.dtsi
++index aba6b0383778..4e0c2a9f7bfe 100644
++--- a/arch/arm64/boot/dts/renesas/r9a08g045.dtsi
+++++ b/arch/arm64/boot/dts/renesas/r9a08g045.dtsi
++@@ -72,6 +72,94 @@
++ 			status = "disabled";
++ 		};
++ 
+++		i2c0: i2c@10090000 {
+++			compatible = "renesas,riic-r9a08g045", "renesas,riic-r9a09g057";
+++			reg = <0 0x10090000 0 0x400>;
+++			interrupts = <GIC_SPI 257 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 263 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 264 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 259 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 260 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 258 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 261 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 262 IRQ_TYPE_LEVEL_HIGH>;
+++			interrupt-names = "tei", "ri", "ti", "spi", "sti",
+++					  "naki", "ali", "tmoi";
+++			clocks = <&cpg CPG_MOD R9A08G045_I2C0_PCLK>;
+++			clock-frequency = <100000>;
+++			resets = <&cpg R9A08G045_I2C0_MRST>;
+++			power-domains = <&cpg>;
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			status = "disabled";
+++		};
+++
+++		i2c1: i2c@10090400 {
+++			compatible = "renesas,riic-r9a08g045", "renesas,riic-r9a09g057";
+++			reg = <0 0x10090400 0 0x400>;
+++			interrupts = <GIC_SPI 265 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 271 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 272 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 267 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 266 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 269 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 270 IRQ_TYPE_LEVEL_HIGH>;
+++			interrupt-names = "tei", "ri", "ti", "spi", "sti",
+++					  "naki", "ali", "tmoi";
+++			clocks = <&cpg CPG_MOD R9A08G045_I2C1_PCLK>;
+++			clock-frequency = <100000>;
+++			resets = <&cpg R9A08G045_I2C1_MRST>;
+++			power-domains = <&cpg>;
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			status = "disabled";
+++		};
+++
+++		i2c2: i2c@10090800 {
+++			compatible = "renesas,riic-r9a08g045", "renesas,riic-r9a09g057";
+++			reg = <0 0x10090800 0 0x400>;
+++			interrupts = <GIC_SPI 273 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 279 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 280 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 275 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 276 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 274 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 277 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 278 IRQ_TYPE_LEVEL_HIGH>;
+++			interrupt-names = "tei", "ri", "ti", "spi", "sti",
+++					  "naki", "ali", "tmoi";
+++			clocks = <&cpg CPG_MOD R9A08G045_I2C2_PCLK>;
+++			clock-frequency = <100000>;
+++			resets = <&cpg R9A08G045_I2C2_MRST>;
+++			power-domains = <&cpg>;
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			status = "disabled";
+++		};
+++
+++		i2c3: i2c@10090c00 {
+++			compatible = "renesas,riic-r9a08g045", "renesas,riic-r9a09g057";
+++			reg = <0 0x10090c00 0 0x400>;
+++			interrupts = <GIC_SPI 281 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 287 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 288 IRQ_TYPE_EDGE_RISING>,
+++				     <GIC_SPI 283 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 284 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 282 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 285 IRQ_TYPE_LEVEL_HIGH>,
+++				     <GIC_SPI 286 IRQ_TYPE_LEVEL_HIGH>;
+++			interrupt-names = "tei", "ri", "ti", "spi", "sti",
+++					  "naki", "ali", "tmoi";
+++			clocks = <&cpg CPG_MOD R9A08G045_I2C3_PCLK>;
+++			clock-frequency = <100000>;
+++			resets = <&cpg R9A08G045_I2C3_MRST>;
+++			power-domains = <&cpg>;
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			status = "disabled";
+++		};
+++
++ 		cpg: clock-controller@11010000 {
++ 			compatible = "renesas,r9a08g045-cpg";
++ 			reg = <0 0x11010000 0 0x10000>;
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0014-arm64-dts-renesas-rzg3s-smarc-Enable-I2C0-node.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0014-arm64-dts-renesas-rzg3s-smarc-Enable-I2C0-node.patch
+new file mode 100644
+index 00000000..2caf419b
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0014-arm64-dts-renesas-rzg3s-smarc-Enable-I2C0-node.patch
+@@ -0,0 +1,43 @@
++From d39c9f670420a4069f89b368150606bd261e0601 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Tue, 20 Aug 2024 13:19:17 +0300
++Subject: [PATCH 14/14] arm64: dts: renesas: rzg3s-smarc: Enable I2C0 node
++
++Enable I2C0 node.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Link: https://lore.kernel.org/20240820101918.2384635-11-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ arch/arm64/boot/dts/renesas/rzg3s-smarc.dtsi | 7 +++++++
++ 1 file changed, 7 insertions(+)
++
++diff --git a/arch/arm64/boot/dts/renesas/rzg3s-smarc.dtsi b/arch/arm64/boot/dts/renesas/rzg3s-smarc.dtsi
++index deb2ad37bb2e..7945d44e6ee1 100644
++--- a/arch/arm64/boot/dts/renesas/rzg3s-smarc.dtsi
+++++ b/arch/arm64/boot/dts/renesas/rzg3s-smarc.dtsi
++@@ -11,6 +11,7 @@
++ 
++ / {
++ 	aliases {
+++		i2c0 = &i2c0;
++ 		serial0 = &scif0;
++ 		mmc1 = &sdhi1;
++ 	};
++@@ -66,6 +67,12 @@
++ 	};
++ };
++ 
+++&i2c0 {
+++	status = "okay";
+++
+++	clock-frequency = <1000000>;
+++};
+++
++ &pinctrl {
++ 	key-1-gpio-hog {
++ 		gpio-hog;
++-- 
++2.17.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0015-Revert-i2c-riic-reword-according-to-newest-specifica.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0015-Revert-i2c-riic-reword-according-to-newest-specifica.patch
+new file mode 100644
+index 00000000..4fcc68a9
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0015-Revert-i2c-riic-reword-according-to-newest-specifica.patch
+@@ -0,0 +1,37 @@
++From 14dabc89ed3b5957394f8c900df69f2f19f43b22 Mon Sep 17 00:00:00 2001
++From: Loc Pham <loc.pham.xh@renesas.com>
++Date: Thu, 5 Sep 2024 14:31:47 +0700
++Subject: [PATCH] Revert "i2c: riic: reword according to newest specification"
++
++This reverts commit 0866549f3802ba676af3c9ac8350c4323964db19.
++
++diff --git a/drivers/i2c/busses/i2c-riic.c b/drivers/i2c/busses/i2c-riic.c
++index 59a84107e28c..76b22403e91f 100644
++--- a/drivers/i2c/busses/i2c-riic.c
+++++ b/drivers/i2c/busses/i2c-riic.c
++@@ -12,9 +12,9 @@
++  *
++  * 1) The main xfer routine kicks off a transmission by putting the start bit
++  * (or repeated start) on the bus and enabling the transmit interrupt (TIE)
++- * since we need to send the target address + RW bit in every case.
+++ * since we need to send the slave address + RW bit in every case.
++  *
++- * 2) TIE sends target address + RW bit and selects how to continue.
+++ * 2) TIE sends slave address + RW bit and selects how to continue.
++  *
++  * 3a) Write case: We keep utilizing TIE as long as we have data to send. If we
++  * are done, we switch over to the transmission done interrupt (TEIE) and mark
++@@ -305,8 +305,8 @@ static u32 riic_func(struct i2c_adapter *adap)
++ }
++ 
++ static const struct i2c_algorithm riic_algo = {
++-	.xfer = riic_xfer,
++-	.functionality = riic_func,
+++	.master_xfer	= riic_xfer,
+++	.functionality	= riic_func,
++ };
++ 
++ static int riic_init_hw(struct riic_dev *riic)
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0016-clk-renesas-r9a08g045-Add-support-for-power-domains.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0016-clk-renesas-r9a08g045-Add-support-for-power-domains.patch
+new file mode 100644
+index 00000000..55f42350
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0016-clk-renesas-r9a08g045-Add-support-for-power-domains.patch
+@@ -0,0 +1,78 @@
++From 0b59d9fc8a8b03f017a6ec0acd6844e6fb5338be Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Mon, 22 Apr 2024 13:53:54 +0300
++Subject: [PATCH 2/6] clk: renesas: r9a08g045: Add support for power domains
++
++Instantiate power domains for the currently enabled IPs of the R9A08G045
++SoC.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Reviewed-by: Ulf Hansson <ulf.hansson@linaro.org>
++Link: https://lore.kernel.org/r/20240422105355.1622177-8-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ drivers/clk/renesas/r9a08g045-cpg.c | 41 +++++++++++++++++++++++++++++
++ 1 file changed, 41 insertions(+)
++
++diff --git a/drivers/clk/renesas/r9a08g045-cpg.c b/drivers/clk/renesas/r9a08g045-cpg.c
++index 2582ba95256e..fafe40a7f73c 100644
++--- a/drivers/clk/renesas/r9a08g045-cpg.c
+++++ b/drivers/clk/renesas/r9a08g045-cpg.c
++@@ -237,6 +237,43 @@ static const unsigned int r9a08g045_crit_mod_clks[] __initconst = {
++ 	MOD_CLK_BASE + R9A08G045_DMAC_ACLK,
++ };
++ 
+++static const struct rzg2l_cpg_pm_domain_init_data r9a08g045_pm_domains[] = {
+++	/* Keep always-on domain on the first position for proper domains registration. */
+++	DEF_PD("always-on",	R9A08G045_PD_ALWAYS_ON,
+++				DEF_REG_CONF(0, 0),
+++				RZG2L_PD_F_ALWAYS_ON),
+++	DEF_PD("gic",		R9A08G045_PD_GIC,
+++				DEF_REG_CONF(CPG_BUS_ACPU_MSTOP, BIT(3)),
+++				RZG2L_PD_F_ALWAYS_ON),
+++	DEF_PD("ia55",		R9A08G045_PD_IA55,
+++				DEF_REG_CONF(CPG_BUS_PERI_CPU_MSTOP, BIT(13)),
+++				RZG2L_PD_F_ALWAYS_ON),
+++	DEF_PD("dmac",		R9A08G045_PD_DMAC,
+++				DEF_REG_CONF(CPG_BUS_REG1_MSTOP, GENMASK(3, 0)),
+++				RZG2L_PD_F_ALWAYS_ON),
+++	DEF_PD("wdt0",		R9A08G045_PD_WDT0,
+++				DEF_REG_CONF(CPG_BUS_REG0_MSTOP, BIT(0)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("sdhi0",		R9A08G045_PD_SDHI0,
+++				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(0)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("sdhi1",		R9A08G045_PD_SDHI1,
+++				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(1)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("sdhi2",		R9A08G045_PD_SDHI2,
+++				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(11)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("eth0",		R9A08G045_PD_ETHER0,
+++				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(2)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("eth1",		R9A08G045_PD_ETHER1,
+++				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(3)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("scif0",		R9A08G045_PD_SCIF0,
+++				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(1)),
+++				RZG2L_PD_F_NONE),
+++};
+++
++ const struct rzg2l_cpg_info r9a08g045_cpg_info = {
++ 	/* Core Clocks */
++ 	.core_clks = r9a08g045_core_clks,
++@@ -257,5 +294,9 @@ const struct rzg2l_cpg_info r9a08g045_cpg_info = {
++ 	.resets = r9a08g045_resets,
++ 	.num_resets = R9A08G045_VBAT_BRESETN + 1, /* Last reset ID + 1 */
++ 
+++	/* Power domains */
+++	.pm_domains = r9a08g045_pm_domains,
+++	.num_pm_domains = ARRAY_SIZE(r9a08g045_pm_domains),
+++
++ 	.has_clk_mon_regs = true,
++ };
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch
+new file mode 100644
+index 00000000..fadf8b0a
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch
+@@ -0,0 +1,65 @@
++From e6de33e7c2600d99cade0bbd6e08ba962fe90c5f Mon Sep 17 00:00:00 2001
++From: Loc Pham <loc.pham.xh@renesas.com>
++Date: Thu, 5 Sep 2024 15:31:35 +0700
++Subject: [PATCH 3/6] clk: renesas: r9a08g045: Add clock, reset and power
++ domain support for I2C
++
++Add clock, reset and power domain support for the I2C channels available
++on the Renesas RZ/G3S SoC.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Link: https://lore.kernel.org/20240625121358.590547-2-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ drivers/clk/renesas/r9a08g045-cpg.c | 20 ++++++++++++++++++++
++ 1 file changed, 20 insertions(+)
++
++diff --git a/drivers/clk/renesas/r9a08g045-cpg.c b/drivers/clk/renesas/r9a08g045-cpg.c
++index fafe40a7f73c..965cbe9a9335 100644
++--- a/drivers/clk/renesas/r9a08g045-cpg.c
+++++ b/drivers/clk/renesas/r9a08g045-cpg.c
++@@ -211,6 +211,10 @@ static const struct rzg2l_mod_clk r9a08g045_mod_clks[] = {
++ 	DEF_COUPLED("eth1_axi",		R9A08G045_ETH1_CLK_AXI, R9A08G045_CLK_M0, 0x57c, 1),
++ 	DEF_COUPLED("eth1_chi",		R9A08G045_ETH1_CLK_CHI, R9A08G045_CLK_ZT, 0x57c, 1),
++ 	DEF_MOD("eth1_refclk",		R9A08G045_ETH1_REFCLK, R9A08G045_CLK_HP, 0x57c, 9),
+++	DEF_MOD("i2c0_pclk",		R9A08G045_I2C0_PCLK, R9A08G045_CLK_P0, 0x580, 0),
+++	DEF_MOD("i2c1_pclk",		R9A08G045_I2C1_PCLK, R9A08G045_CLK_P0, 0x580, 1),
+++	DEF_MOD("i2c2_pclk",		R9A08G045_I2C2_PCLK, R9A08G045_CLK_P0, 0x580, 2),
+++	DEF_MOD("i2c3_pclk",		R9A08G045_I2C3_PCLK, R9A08G045_CLK_P0, 0x580, 3),
++ 	DEF_MOD("scif0_clk_pck",	R9A08G045_SCIF0_CLK_PCK, R9A08G045_CLK_P0, 0x584, 0),
++ 	DEF_MOD("gpio_hclk",		R9A08G045_GPIO_HCLK, R9A08G045_OSCCLK, 0x598, 0),
++ };
++@@ -224,6 +228,10 @@ static const struct rzg2l_reset r9a08g045_resets[] = {
++ 	DEF_RST(R9A08G045_SDHI2_IXRST, 0x854, 2),
++ 	DEF_RST(R9A08G045_ETH0_RST_HW_N, 0x87c, 0),
++ 	DEF_RST(R9A08G045_ETH1_RST_HW_N, 0x87c, 1),
+++	DEF_RST(R9A08G045_I2C0_MRST, 0x880, 0),
+++	DEF_RST(R9A08G045_I2C1_MRST, 0x880, 1),
+++	DEF_RST(R9A08G045_I2C2_MRST, 0x880, 2),
+++	DEF_RST(R9A08G045_I2C3_MRST, 0x880, 3),
++ 	DEF_RST(R9A08G045_SCIF0_RST_SYSTEM_N, 0x884, 0),
++ 	DEF_RST(R9A08G045_GPIO_RSTN, 0x898, 0),
++ 	DEF_RST(R9A08G045_GPIO_PORT_RESETN, 0x898, 1),
++@@ -269,6 +277,18 @@ static const struct rzg2l_cpg_pm_domain_init_data r9a08g045_pm_domains[] = {
++ 	DEF_PD("eth1",		R9A08G045_PD_ETHER1,
++ 				DEF_REG_CONF(CPG_BUS_PERI_COM_MSTOP, BIT(3)),
++ 				RZG2L_PD_F_NONE),
+++	DEF_PD("i2c0",		R9A08G045_PD_I2C0,
+++				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(10)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("i2c1",		R9A08G045_PD_I2C1,
+++				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(11)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("i2c2",		R9A08G045_PD_I2C2,
+++				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(12)),
+++				RZG2L_PD_F_NONE),
+++	DEF_PD("i2c3",		R9A08G045_PD_I2C3,
+++				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(13)),
+++				RZG2L_PD_F_NONE),
++ 	DEF_PD("scif0",		R9A08G045_PD_SCIF0,
++ 				DEF_REG_CONF(CPG_BUS_MCPU2_MSTOP, BIT(1)),
++ 				RZG2L_PD_F_NONE),
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch
+new file mode 100644
+index 00000000..2dbd1a96
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch
+@@ -0,0 +1,99 @@
++From c5346712abcbd29e72c772c81be61e1fc976610a Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Mon, 22 Apr 2024 13:53:51 +0300
++Subject: [PATCH 4/6] dt-bindings: clock: r9a08g045-cpg: Add power domain IDs
++
++Add power domain IDs for the RZ/G3S (R9A08G045) SoC.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Acked-by: Rob Herring <robh@kernel.org>
++Reviewed-by: Ulf Hansson <ulf.hansson@linaro.org>
++Link: https://lore.kernel.org/r/20240422105355.1622177-5-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ include/dt-bindings/clock/r9a08g045-cpg.h | 70 +++++++++++++++++++++++
++ 1 file changed, 70 insertions(+)
++
++diff --git a/include/dt-bindings/clock/r9a08g045-cpg.h b/include/dt-bindings/clock/r9a08g045-cpg.h
++index 410725b778a8..8281e9caf3a9 100644
++--- a/include/dt-bindings/clock/r9a08g045-cpg.h
+++++ b/include/dt-bindings/clock/r9a08g045-cpg.h
++@@ -239,4 +239,74 @@
++ #define R9A08G045_I3C_PRESETN		92
++ #define R9A08G045_VBAT_BRESETN		93
++ 
+++/* Power domain IDs. */
+++#define R9A08G045_PD_ALWAYS_ON		0
+++#define R9A08G045_PD_GIC		1
+++#define R9A08G045_PD_IA55		2
+++#define R9A08G045_PD_MHU		3
+++#define R9A08G045_PD_CORESIGHT		4
+++#define R9A08G045_PD_SYC		5
+++#define R9A08G045_PD_DMAC		6
+++#define R9A08G045_PD_GTM0		7
+++#define R9A08G045_PD_GTM1		8
+++#define R9A08G045_PD_GTM2		9
+++#define R9A08G045_PD_GTM3		10
+++#define R9A08G045_PD_GTM4		11
+++#define R9A08G045_PD_GTM5		12
+++#define R9A08G045_PD_GTM6		13
+++#define R9A08G045_PD_GTM7		14
+++#define R9A08G045_PD_MTU		15
+++#define R9A08G045_PD_POE3		16
+++#define R9A08G045_PD_GPT		17
+++#define R9A08G045_PD_POEGA		18
+++#define R9A08G045_PD_POEGB		19
+++#define R9A08G045_PD_POEGC		20
+++#define R9A08G045_PD_POEGD		21
+++#define R9A08G045_PD_WDT0		22
+++#define R9A08G045_PD_XSPI		23
+++#define R9A08G045_PD_SDHI0		24
+++#define R9A08G045_PD_SDHI1		25
+++#define R9A08G045_PD_SDHI2		26
+++#define R9A08G045_PD_SSI0		27
+++#define R9A08G045_PD_SSI1		28
+++#define R9A08G045_PD_SSI2		29
+++#define R9A08G045_PD_SSI3		30
+++#define R9A08G045_PD_SRC		31
+++#define R9A08G045_PD_USB0		32
+++#define R9A08G045_PD_USB1		33
+++#define R9A08G045_PD_USB_PHY		34
+++#define R9A08G045_PD_ETHER0		35
+++#define R9A08G045_PD_ETHER1		36
+++#define R9A08G045_PD_I2C0		37
+++#define R9A08G045_PD_I2C1		38
+++#define R9A08G045_PD_I2C2		39
+++#define R9A08G045_PD_I2C3		40
+++#define R9A08G045_PD_SCIF0		41
+++#define R9A08G045_PD_SCIF1		42
+++#define R9A08G045_PD_SCIF2		43
+++#define R9A08G045_PD_SCIF3		44
+++#define R9A08G045_PD_SCIF4		45
+++#define R9A08G045_PD_SCIF5		46
+++#define R9A08G045_PD_SCI0		47
+++#define R9A08G045_PD_SCI1		48
+++#define R9A08G045_PD_IRDA		49
+++#define R9A08G045_PD_RSPI0		50
+++#define R9A08G045_PD_RSPI1		51
+++#define R9A08G045_PD_RSPI2		52
+++#define R9A08G045_PD_RSPI3		53
+++#define R9A08G045_PD_RSPI4		54
+++#define R9A08G045_PD_CANFD		55
+++#define R9A08G045_PD_ADC		56
+++#define R9A08G045_PD_TSU		57
+++#define R9A08G045_PD_OCTA		58
+++#define R9A08G045_PD_PDM		59
+++#define R9A08G045_PD_PCI		60
+++#define R9A08G045_PD_SPDIF		61
+++#define R9A08G045_PD_I3C		62
+++#define R9A08G045_PD_VBAT		63
+++
+++#define R9A08G045_PD_DDR		64
+++#define R9A08G045_PD_TZCDDR		65
+++#define R9A08G045_PD_OTFDE_DDR		66
+++
++ #endif /* __DT_BINDINGS_CLOCK_R9A08G045_CPG_H__ */
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch
+new file mode 100644
+index 00000000..9849dca3
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch
+@@ -0,0 +1,398 @@
++From fbad49899a80030121f91446b3196e8ae28476a3 Mon Sep 17 00:00:00 2001
++From: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Date: Mon, 22 Apr 2024 13:53:53 +0300
++Subject: [PATCH 5/6] clk: renesas: rzg2l: Extend power domain support
++
++RZ/{G2L, V2L, G3S}-based CPG versions have support for saving extra
++power when clocks are disabled by activating module standby.  This is
++done through MSTOP-specific registers that are part of CPG.  Each
++individual module has one or more bits associated with one MSTOP
++register (see table "Registers for Module Standby Mode" from HW
++manuals).  Hardware manual associates modules' clocks with one or more
++MSTOP bits.  There are 3 mappings available (identified by researching
++RZ/G2L, RZ/G3S, RZ/V2L HW manuals):
++
++case 1: N clocks mapped to N MSTOP bits (with N={0, ..., X})
++case 2: N clocks mapped to 1 MSTOP bit  (with N={0, ..., X})
++case 3: N clocks mapped to M MSTOP bits (with N={0, ..., X}, M={0, ..., Y})
++
++Case 3 has been currently identified on RZ/V2L for the VCPL4 module.
++
++To cover all three cases, the individual platform drivers will provide
++the clock driver with MSTOP register offsets and associated bits in this
++register as a bitmask, and the clock driver will apply this bitmask to
++the proper MSTOP register.
++
++The MSTOP support was implemented through power domains.
++Platform-specific clock drivers will register an array of type struct
++rzg2l_cpg_pm_domain_init_data, which will be used to instantiate
++properly the power domains.
++
++Signed-off-by: Claudiu Beznea <claudiu.beznea.uj@bp.renesas.com>
++Reviewed-by: Geert Uytterhoeven <geert+renesas@glider.be>
++Reviewed-by: Ulf Hansson <ulf.hansson@linaro.org>
++Link: https://lore.kernel.org/r/20240422105355.1622177-7-claudiu.beznea.uj@bp.renesas.com
++Signed-off-by: Geert Uytterhoeven <geert+renesas@glider.be>
++---
++ drivers/clk/renesas/rzg2l-cpg.c | 199 +++++++++++++++++++++++++++++---
++ drivers/clk/renesas/rzg2l-cpg.h |  67 +++++++++++
++ 2 files changed, 252 insertions(+), 14 deletions(-)
++
++diff --git a/drivers/clk/renesas/rzg2l-cpg.c b/drivers/clk/renesas/rzg2l-cpg.c
++index e05471a6ca8d..48554599e887 100644
++--- a/drivers/clk/renesas/rzg2l-cpg.c
+++++ b/drivers/clk/renesas/rzg2l-cpg.c
++@@ -140,7 +140,6 @@ struct rzg2l_pll5_mux_dsi_div_param {
++  * @num_resets: Number of Module Resets in info->resets[]
++  * @last_dt_core_clk: ID of the last Core Clock exported to DT
++  * @info: Pointer to platform data
++- * @genpd: PM domain
++  * @mux_dsi_div_params: pll5 mux and dsi div parameters
++  */
++ struct rzg2l_cpg_priv {
++@@ -157,8 +156,6 @@ struct rzg2l_cpg_priv {
++ 
++ 	const struct rzg2l_cpg_info *info;
++ 
++-	struct generic_pm_domain genpd;
++-
++ 	struct rzg2l_pll5_mux_dsi_div_param mux_dsi_div_params;
++ };
++ 
++@@ -1560,9 +1557,34 @@ static bool rzg2l_cpg_is_pm_clk(struct rzg2l_cpg_priv *priv,
++ 	return true;
++ }
++ 
+++/**
+++ * struct rzg2l_cpg_pm_domains - RZ/G2L PM domains data structure
+++ * @onecell_data: cell data
+++ * @domains: generic PM domains
+++ */
+++struct rzg2l_cpg_pm_domains {
+++	struct genpd_onecell_data onecell_data;
+++	struct generic_pm_domain *domains[];
+++};
+++
+++/**
+++ * struct rzg2l_cpg_pd - RZ/G2L power domain data structure
+++ * @genpd: generic PM domain
+++ * @priv: pointer to CPG private data structure
+++ * @conf: CPG PM domain configuration info
+++ * @id: RZ/G2L power domain ID
+++ */
+++struct rzg2l_cpg_pd {
+++	struct generic_pm_domain genpd;
+++	struct rzg2l_cpg_priv *priv;
+++	struct rzg2l_cpg_pm_domain_conf conf;
+++	u16 id;
+++};
+++
++ static int rzg2l_cpg_attach_dev(struct generic_pm_domain *domain, struct device *dev)
++ {
++-	struct rzg2l_cpg_priv *priv = container_of(domain, struct rzg2l_cpg_priv, genpd);
+++	struct rzg2l_cpg_pd *pd = container_of(domain, struct rzg2l_cpg_pd, genpd);
+++	struct rzg2l_cpg_priv *priv = pd->priv;
++ 	struct device_node *np = dev->of_node;
++ 	struct of_phandle_args clkspec;
++ 	bool once = true;
++@@ -1618,31 +1640,180 @@ static void rzg2l_cpg_detach_dev(struct generic_pm_domain *unused, struct device
++ }
++ 
++ static void rzg2l_cpg_genpd_remove(void *data)
+++{
+++	struct genpd_onecell_data *celldata = data;
+++
+++	for (unsigned int i = 0; i < celldata->num_domains; i++)
+++		pm_genpd_remove(celldata->domains[i]);
+++}
+++
+++static void rzg2l_cpg_genpd_remove_simple(void *data)
++ {
++ 	pm_genpd_remove(data);
++ }
++ 
+++static int rzg2l_cpg_power_on(struct generic_pm_domain *domain)
+++{
+++	struct rzg2l_cpg_pd *pd = container_of(domain, struct rzg2l_cpg_pd, genpd);
+++	struct rzg2l_cpg_reg_conf mstop = pd->conf.mstop;
+++	struct rzg2l_cpg_priv *priv = pd->priv;
+++
+++	/* Set MSTOP. */
+++	if (mstop.mask)
+++		writel(mstop.mask << 16, priv->base + mstop.off);
+++
+++	return 0;
+++}
+++
+++static int rzg2l_cpg_power_off(struct generic_pm_domain *domain)
+++{
+++	struct rzg2l_cpg_pd *pd = container_of(domain, struct rzg2l_cpg_pd, genpd);
+++	struct rzg2l_cpg_reg_conf mstop = pd->conf.mstop;
+++	struct rzg2l_cpg_priv *priv = pd->priv;
+++
+++	/* Set MSTOP. */
+++	if (mstop.mask)
+++		writel(mstop.mask | (mstop.mask << 16), priv->base + mstop.off);
+++
+++	return 0;
+++}
+++
+++static int __init rzg2l_cpg_pd_setup(struct rzg2l_cpg_pd *pd, bool always_on)
+++{
+++	struct dev_power_governor *governor;
+++
+++	pd->genpd.flags |= GENPD_FLAG_PM_CLK | GENPD_FLAG_ACTIVE_WAKEUP;
+++	pd->genpd.attach_dev = rzg2l_cpg_attach_dev;
+++	pd->genpd.detach_dev = rzg2l_cpg_detach_dev;
+++	if (always_on) {
+++		pd->genpd.flags |= GENPD_FLAG_ALWAYS_ON;
+++		governor = &pm_domain_always_on_gov;
+++	} else {
+++		pd->genpd.power_on = rzg2l_cpg_power_on;
+++		pd->genpd.power_off = rzg2l_cpg_power_off;
+++		governor = &simple_qos_governor;
+++	}
+++
+++	return pm_genpd_init(&pd->genpd, governor, !always_on);
+++}
+++
++ static int __init rzg2l_cpg_add_clk_domain(struct rzg2l_cpg_priv *priv)
++ {
++ 	struct device *dev = priv->dev;
++ 	struct device_node *np = dev->of_node;
++-	struct generic_pm_domain *genpd = &priv->genpd;
+++	struct rzg2l_cpg_pd *pd;
+++	int ret;
+++
+++	pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
+++	if (!pd)
+++		return -ENOMEM;
+++
+++	pd->genpd.name = np->name;
+++	pd->priv = priv;
+++	ret = rzg2l_cpg_pd_setup(pd, true);
+++	if (ret)
+++		return ret;
+++
+++	ret = devm_add_action_or_reset(dev, rzg2l_cpg_genpd_remove_simple, &pd->genpd);
+++	if (ret)
+++		return ret;
+++
+++	return of_genpd_add_provider_simple(np, &pd->genpd);
+++}
+++
+++static struct generic_pm_domain *
+++rzg2l_cpg_pm_domain_xlate(const struct of_phandle_args *spec, void *data)
+++{
+++	struct generic_pm_domain *domain = ERR_PTR(-ENOENT);
+++	struct genpd_onecell_data *genpd = data;
+++
+++	if (spec->args_count != 1)
+++		return ERR_PTR(-EINVAL);
+++
+++	for (unsigned int i = 0; i < genpd->num_domains; i++) {
+++		struct rzg2l_cpg_pd *pd = container_of(genpd->domains[i], struct rzg2l_cpg_pd,
+++						       genpd);
+++
+++		if (pd->id == spec->args[0]) {
+++			domain = &pd->genpd;
+++			break;
+++		}
+++	}
+++
+++	return domain;
+++}
+++
+++static int __init rzg2l_cpg_add_pm_domains(struct rzg2l_cpg_priv *priv)
+++{
+++	const struct rzg2l_cpg_info *info = priv->info;
+++	struct device *dev = priv->dev;
+++	struct device_node *np = dev->of_node;
+++	struct rzg2l_cpg_pm_domains *domains;
+++	struct generic_pm_domain *parent;
+++	u32 ncells;
++ 	int ret;
++ 
++-	genpd->name = np->name;
++-	genpd->flags = GENPD_FLAG_PM_CLK | GENPD_FLAG_ALWAYS_ON |
++-		       GENPD_FLAG_ACTIVE_WAKEUP;
++-	genpd->attach_dev = rzg2l_cpg_attach_dev;
++-	genpd->detach_dev = rzg2l_cpg_detach_dev;
++-	ret = pm_genpd_init(genpd, &pm_domain_always_on_gov, false);
+++	ret = of_property_read_u32(np, "#power-domain-cells", &ncells);
+++	if (ret)
+++		return ret;
+++
+++	/* For backward compatibility. */
+++	if (!ncells)
+++		return rzg2l_cpg_add_clk_domain(priv);
+++
+++	domains = devm_kzalloc(dev, struct_size(domains, domains, info->num_pm_domains),
+++			       GFP_KERNEL);
+++	if (!domains)
+++		return -ENOMEM;
+++
+++	domains->onecell_data.domains = domains->domains;
+++	domains->onecell_data.num_domains = info->num_pm_domains;
+++	domains->onecell_data.xlate = rzg2l_cpg_pm_domain_xlate;
+++
+++	ret = devm_add_action_or_reset(dev, rzg2l_cpg_genpd_remove, &domains->onecell_data);
++ 	if (ret)
++ 		return ret;
++ 
++-	ret = devm_add_action_or_reset(dev, rzg2l_cpg_genpd_remove, genpd);
+++	for (unsigned int i = 0; i < info->num_pm_domains; i++) {
+++		bool always_on = !!(info->pm_domains[i].flags & RZG2L_PD_F_ALWAYS_ON);
+++		struct rzg2l_cpg_pd *pd;
+++
+++		pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
+++		if (!pd)
+++			return -ENOMEM;
+++
+++		pd->genpd.name = info->pm_domains[i].name;
+++		pd->conf = info->pm_domains[i].conf;
+++		pd->id = info->pm_domains[i].id;
+++		pd->priv = priv;
+++
+++		ret = rzg2l_cpg_pd_setup(pd, always_on);
+++		if (ret)
+++			return ret;
+++
+++		if (always_on) {
+++			ret = rzg2l_cpg_power_on(&pd->genpd);
+++			if (ret)
+++				return ret;
+++		}
+++
+++		domains->domains[i] = &pd->genpd;
+++		/* Parent should be on the very first entry of info->pm_domains[]. */
+++		if (!i) {
+++			parent = &pd->genpd;
+++			continue;
+++		}
+++
+++		ret = pm_genpd_add_subdomain(parent, &pd->genpd);
+++		if (ret)
+++			return ret;
+++	}
+++
+++	ret = of_genpd_add_provider_onecell(np, &domains->onecell_data);
++ 	if (ret)
++ 		return ret;
++ 
++-	return of_genpd_add_provider_simple(np, genpd);
+++	return 0;
++ }
++ 
++ static int __init rzg2l_cpg_probe(struct platform_device *pdev)
++@@ -1698,7 +1869,7 @@ static int __init rzg2l_cpg_probe(struct platform_device *pdev)
++ 	if (error)
++ 		return error;
++ 
++-	error = rzg2l_cpg_add_clk_domain(priv);
+++	error = rzg2l_cpg_add_pm_domains(priv);
++ 	if (error)
++ 		return error;
++ 
++diff --git a/drivers/clk/renesas/rzg2l-cpg.h b/drivers/clk/renesas/rzg2l-cpg.h
++index 6e38c8fc888c..ecfe7e7ea8a1 100644
++--- a/drivers/clk/renesas/rzg2l-cpg.h
+++++ b/drivers/clk/renesas/rzg2l-cpg.h
++@@ -27,6 +27,18 @@
++ #define CPG_PL6_ETH_SSEL	(0x418)
++ #define CPG_PL5_SDIV		(0x420)
++ #define CPG_RST_MON		(0x680)
+++#define CPG_BUS_ACPU_MSTOP	(0xB60)
+++#define CPG_BUS_MCPU1_MSTOP	(0xB64)
+++#define CPG_BUS_MCPU2_MSTOP	(0xB68)
+++#define CPG_BUS_PERI_COM_MSTOP	(0xB6C)
+++#define CPG_BUS_PERI_CPU_MSTOP	(0xB70)
+++#define CPG_BUS_PERI_DDR_MSTOP	(0xB74)
+++#define CPG_BUS_REG0_MSTOP	(0xB7C)
+++#define CPG_BUS_REG1_MSTOP	(0xB80)
+++#define CPG_BUS_TZCDDR_MSTOP	(0xB84)
+++#define CPG_MHU_MSTOP		(0xB88)
+++#define CPG_BUS_MCPU3_MSTOP	(0xB90)
+++#define CPG_BUS_PERI_CPU2_MSTOP	(0xB94)
++ #define CPG_OTHERFUNC1_REG	(0xBE8)
++ 
++ #define CPG_SIPLL5_STBY_RESETB		BIT(0)
++@@ -234,6 +246,55 @@ struct rzg2l_reset {
++ #define DEF_RST(_id, _off, _bit)	\
++ 	DEF_RST_MON(_id, _off, _bit, -1)
++ 
+++/**
+++ * struct rzg2l_cpg_reg_conf - RZ/G2L register configuration data structure
+++ * @off: register offset
+++ * @mask: register mask
+++ */
+++struct rzg2l_cpg_reg_conf {
+++	u16 off;
+++	u16 mask;
+++};
+++
+++#define DEF_REG_CONF(_off, _mask) ((struct rzg2l_cpg_reg_conf) { .off = (_off), .mask = (_mask) })
+++
+++/**
+++ * struct rzg2l_cpg_pm_domain_conf - PM domain configuration data structure
+++ * @mstop: MSTOP register configuration
+++ */
+++struct rzg2l_cpg_pm_domain_conf {
+++	struct rzg2l_cpg_reg_conf mstop;
+++};
+++
+++/**
+++ * struct rzg2l_cpg_pm_domain_init_data - PM domain init data
+++ * @name: PM domain name
+++ * @conf: PM domain configuration
+++ * @flags: RZG2L PM domain flags (see RZG2L_PD_F_*)
+++ * @id: PM domain ID (similar to the ones defined in
+++ *      include/dt-bindings/clock/<soc-id>-cpg.h)
+++ */
+++struct rzg2l_cpg_pm_domain_init_data {
+++	const char * const name;
+++	struct rzg2l_cpg_pm_domain_conf conf;
+++	u32 flags;
+++	u16 id;
+++};
+++
+++#define DEF_PD(_name, _id, _mstop_conf, _flags) \
+++	{ \
+++		.name = (_name), \
+++		.id = (_id), \
+++		.conf = { \
+++			.mstop = (_mstop_conf), \
+++		}, \
+++		.flags = (_flags), \
+++	}
+++
+++/* Power domain flags. */
+++#define RZG2L_PD_F_ALWAYS_ON	BIT(0)
+++#define RZG2L_PD_F_NONE		(0)
+++
++ /**
++  * struct rzg2l_cpg_info - SoC-specific CPG Description
++  *
++@@ -252,6 +313,8 @@ struct rzg2l_reset {
++  * @crit_mod_clks: Array with Module Clock IDs of critical clocks that
++  *                 should not be disabled without a knowledgeable driver
++  * @num_crit_mod_clks: Number of entries in crit_mod_clks[]
+++ * @pm_domains: PM domains init data array
+++ * @num_pm_domains: Number of PM domains
++  * @has_clk_mon_regs: Flag indicating whether the SoC has CLK_MON registers
++  */
++ struct rzg2l_cpg_info {
++@@ -278,6 +341,10 @@ struct rzg2l_cpg_info {
++ 	const unsigned int *crit_mod_clks;
++ 	unsigned int num_crit_mod_clks;
++ 
+++	/* Power domain. */
+++	const struct rzg2l_cpg_pm_domain_init_data *pm_domains;
+++	unsigned int num_pm_domains;
+++
++ 	bool has_clk_mon_regs;
++ };
++ 
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0020-cpg-Fix-compilation-error.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0020-cpg-Fix-compilation-error.patch
+new file mode 100644
+index 00000000..03394eca
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0020-cpg-Fix-compilation-error.patch
+@@ -0,0 +1,41 @@
++From f08006b61e655c77d3773c53ac9ca9565f889c7b Mon Sep 17 00:00:00 2001
++From: Loc Pham <loc.pham.xh@renesas.com>
++Date: Thu, 5 Sep 2024 17:14:53 +0700
++Subject: [PATCH 6/6] cpg: Fix compilation error
++MIME-Version: 1.0
++Content-Type: text/plain; charset=UTF-8
++Content-Transfer-Encoding: 8bit
++
++This commit fixes compilation error as below:
++
++  | drivers/clk/renesas/rzg2l-cpg.c: In function ‘rzg2l_cpg_add_pm_domains’:
++  |
++  | drivers/clk/renesas/rzg2l-cpg.c:1771:30: error: assignment to ‘genpd_xlate_t’ \
++  | {aka ‘struct generic_pm_domain * (*)(struct of_phandle_args *, void *)’} from \
++  | incompatible pointer type                                                     \
++  | ‘struct generic_pm_domain * (*)(const struct of_phandle_args *, void *)’
++  |
++  |  domains->onecell_data.xlate = rzg2l_cpg_pm_domain_xlate;
++  |                              ^
++
++Signed-off-by: Loc Pham <loc.pham.xh@renesas.com>
++---
++ drivers/clk/renesas/rzg2l-cpg.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/drivers/clk/renesas/rzg2l-cpg.c b/drivers/clk/renesas/rzg2l-cpg.c
++index 48554599e887..c701f5a833a5 100644
++--- a/drivers/clk/renesas/rzg2l-cpg.c
+++++ b/drivers/clk/renesas/rzg2l-cpg.c
++@@ -1722,7 +1722,7 @@ static int __init rzg2l_cpg_add_clk_domain(struct rzg2l_cpg_priv *priv)
++ }
++ 
++ static struct generic_pm_domain *
++-rzg2l_cpg_pm_domain_xlate(const struct of_phandle_args *spec, void *data)
+++rzg2l_cpg_pm_domain_xlate(struct of_phandle_args *spec, void *data)
++ {
++ 	struct generic_pm_domain *domain = ERR_PTR(-ENOENT);
++ 	struct genpd_onecell_data *genpd = data;
++-- 
++2.34.1
++
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend b/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
+index 842c3119..70318bd5 100644
+--- a/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
+@@ -10,6 +10,8 @@ SRC_URI_append = " \
+ 	${@bb.utils.contains('MACHINE_FEATURES', 'nvme', 'file://nvme.cfg', '',d)} \
+  "
+ 
++SRC_URI_append = " file://patches.scc"
++
+ BUILTIN_FIRMWARE_DIR = "${STAGING_KERNEL_DIR}/drivers/base/firmware_loader/builtin"
+ do_download_firmware () {
+ 	if [ -f ${WORKDIR}/iwlwifi-cc-a0-46.ucode ]; then
+-- 
+2.34.1
+

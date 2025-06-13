@@ -1,0 +1,51 @@
+Add legacy sysfs interface for GPIOs
+Adds kernel modules for /sys/class/gpio/ directory to show
+up in the environment. Via this interface, the GPIO pins can be
+exported and controlled.
+---
+ .../linux/linux-renesas/patches.scc           |  1 +
+ ...s-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch | 23 +++++++++++++++++++
+ 2 files changed, 24 insertions(+)
+ create mode 100644 meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0021-arm64-dts-renesas-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch
+
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
+index a3aa244b..c392eb78 100644
+--- a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches.scc
+@@ -18,3 +18,4 @@ patch patches/0017-clk-renesas-r9a08g045-Add-clock-reset-and-power-doma.patch
+ patch patches/0018-dt-bindings-clock-r9a08g045-cpg-Add-power-domain-IDs.patch
+ patch patches/0019-clk-renesas-rzg2l-Extend-power-domain-support.patch
+ patch patches/0020-cpg-Fix-compilation-error.patch
++patch patches/0021-arm64-dts-renesas-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0021-arm64-dts-renesas-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0021-arm64-dts-renesas-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch
+new file mode 100644
+index 00000000..40a6b805
+--- /dev/null
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/patches/0021-arm64-dts-renesas-rzg3s-smarc-Enable-CONFIG_GPIO_SYS.patch
+@@ -0,0 +1,23 @@
++From 08a557cb93757d2ef2fb6970660aa808d175966f Mon Sep 17 00:00:00 2001
++From: Loc Pham <loc.pham.xh@renesas.com>
++Date: Wed, 4 Sep 2024 05:16:30 +0000
++Subject: [PATCH] arm64: dts: renesas: rzg3s-smarc: Enable CONFIG_GPIO_SYSFS
++
++Without this config, there will be no "gpio" directory in
++"/sys/class" directory to export GPIO pins.
++
++Signed-off-by: Loc Pham <loc.pham.xh@renesas.com>
++
++diff --git a/arch/arm64/configs/defconfig b/arch/arm64/configs/defconfig
++index 6f644364b743..ffbb54dbc94f 100644
++--- a/arch/arm64/configs/defconfig
+++++ b/arch/arm64/configs/defconfig
++@@ -1,3 +1,5 @@
+++CONFIG_EXPERT=y
+++CONFIG_GPIO_SYSFS=y
++ CONFIG_SYSVIPC=y
++ CONFIG_POSIX_MQUEUE=y
++ CONFIG_AUDIT=y
++-- 
++2.34.1
++
+-- 
+2.34.1
+

@@ -1,0 +1,31 @@
+Subject: [PATCH 07/14] Fixing aws-greengrass-core-sdk-c lib package issue
+
+- do_package qa expecting cleanup on lib64, but all package files generated on lib.
+- Renaming lib with lib64 is solved the issue
+
+---
+ .../aws-greengrass-core-sdk-c_1.2.0.bb                   | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/meta-aws/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb b/meta-aws/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
+index d0294754..d73a4b07 100644
+--- a/meta-aws/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
++++ b/meta-aws/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
+@@ -12,6 +12,15 @@ S = "${WORKDIR}/git"
+
+ inherit cmake
+
++do_install:append_aarch64() {
++    mv ${D}/usr/lib ${D}${libdir}
++    # Remove unused files
++    rm -rf ${D}${libdir}/cmake
++    rm -rf ${D}${libdir}/.debug
++    # install the library
++    install -d ${D}${libdir}
++}
++
+ do_install:append() {
+     # Remove unused files
+     rm -rf ${D}${libdir}/cmake
+--
+2.25.1

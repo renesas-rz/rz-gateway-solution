@@ -1,0 +1,55 @@
+Subject: [PATCH 01/14] Enabling linux configs required for aws greengrass
+
+---
+ .../linux/linux-renesas/.gitkeep              |  0
+ .../linux-renesas/aws-iot-greengrass-v2.cfg   | 21 +++++++++++++++++++
+ .../linux/linux-renesas_5.10.bbappend         |  6 ++++++
+ 3 files changed, 27 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/.gitkeep
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/aws-iot-greengrass-v2.cfg
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/.gitkeep b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/.gitkeep
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/aws-iot-greengrass-v2.cfg b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/aws-iot-greengrass-v2.cfg
+new file mode 100644
+index 00000000..4d8ca151
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/aws-iot-greengrass-v2.cfg
+@@ -0,0 +1,21 @@
++# Configurations must enable to support aws green grass device
++
++# Namespace:
++CONFIG_IPC_NS=y
++CONFIG_UTS_NS=y
++CONFIG_USER_NS=y
++CONFIG_PID_NS=y
++
++# Cgroups:
++CONFIG_CGROUP_DEVICE=y
++CONFIG_CGROUPS=y
++CONFIG_MEMCG=y
++
++# Others:
++CONFIG_POSIX_MQUEUE=y
++CONFIG_OVERLAY_FS=y
++CONFIG_HAVE_ARCH_SECCOMP_FILTER=y
++CONFIG_SECCOMP_FILTER=y
++CONFIG_KEYS=y
++CONFIG_SECCOMP=y
++CONFIG_SHMEM=y
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+new file mode 100644
+index 00000000..e0d600d7
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+@@ -0,0 +1,6 @@
++FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
++
++
++SRC_URI_append = " \
++	file://aws-iot-greengrass-v2.cfg \
++ "
+--
+2.25.1

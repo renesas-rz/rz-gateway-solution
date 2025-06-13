@@ -1,0 +1,190 @@
+Subject: [PATCH 08/14] Integration of u-boot env tools
+
+- Modified u-boot.inc file to build for fw tools
+- Split fw tools from u-boot to u-boot-fw-utils
+- Installed fw_printenv, fw_setenv and fw_env.config
+- Enabled runtime env storage configuration
+
+---
+ .../meta-rz-common/include/core-image-bsp.inc |  1 +
+ .../recipes-bsp/u-boot/u-boot.inc             | 25 +++++++++++
+ ...001-Enable-runtime-env-configuration.patch | 24 +++++++++++
+ .../recipes-bsp/u-boot/u-boot/fw_env.config   | 41 +++++++++++++++++++
+ .../u-boot/u-boot_2021.10.bbappend            |  2 +
+ 5 files changed, 93 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Enable-runtime-env-configuration.patch
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index 44b8955c..509f7945 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -72,6 +72,7 @@ IMAGE_INSTALL_append = " \
+ 	aws-iot-device-sdk-python-v2 \
+         aws-greengrass-core-sdk-c \
+ 	aws-greengrass-core-sdk-python \
++	u-boot-fw-utils \
+ "
+
+ # Additional tools for support testing Realtime characteristic in system
+diff --git a/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc b/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
+index 473a3298..daa56790 100644
+--- a/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
++++ b/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
+@@ -31,6 +31,10 @@ UBOOT_IMAGE ?= "u-boot-${MACHINE}-${PV}-${PR}.${UBOOT_SUFFIX}"
+ UBOOT_SYMLINK ?= "u-boot-${MACHINE}.${UBOOT_SUFFIX}"
+ UBOOT_MAKE_TARGET ?= "all"
+
++# Enable fw_printenv and fw_setenv tools in u-boot and install them
++UBOOT_ENV_TOOLS_EN ?= "1"
++UBOOT_MAKE_ENV_TOOLS ?= "envtools"
++
+ # Output the ELF generated. Some platforms can use the ELF file and directly
+ # load it (JTAG booting, QEMU) additionally the ELF can be used for debugging
+ # purposes.
+@@ -92,6 +96,9 @@ do_compile () {
+                 then
+                     oe_runmake -C ${S} O=${B}/${config} ${config}
+                     oe_runmake -C ${S} O=${B}/${config} ${UBOOT_MAKE_TARGET}
++		    if [ "${UBOOT_ENV_TOOLS_EN}" = "1" ]; then
++                        oe_runmake -C ${S} O=${B}/${config} ${UBOOT_MAKE_ENV_TOOLS}
++                    fi
+                     for binary in ${UBOOT_BINARIES}; do
+                         k=$(expr $k + 1);
+                         if [ $k -eq $i ]; then
+@@ -107,6 +114,9 @@ do_compile () {
+     else
+         oe_runmake -C ${S} O=${B} ${UBOOT_MACHINE}
+         oe_runmake -C ${S} O=${B} ${UBOOT_MAKE_TARGET}
++        if [ "${UBOOT_ENV_TOOLS_EN}" = "1" ]; then
++            oe_runmake -C ${S} O=${B}/${config} ${UBOOT_MAKE_ENV_TOOLS}
++        fi
+     fi
+
+ }
+@@ -124,6 +134,11 @@ do_install () {
+                     install -m 644 ${B}/${config}/u-boot-${type}.${UBOOT_SUFFIX} ${D}/boot/u-boot-${type}-${PV}-${PR}.${UBOOT_SUFFIX}
+                     ln -sf u-boot-${type}-${PV}-${PR}.${UBOOT_SUFFIX} ${D}/boot/${UBOOT_BINARY}-${type}
+                     ln -sf u-boot-${type}-${PV}-${PR}.${UBOOT_SUFFIX} ${D}/boot/${UBOOT_BINARY}
++		    if [ "${UBOOT_ENV_TOOLS_EN}" = "1" ]; then
++                        install -d ${D}/${bindir}
++                        install -m 755 ${B}/${config}/tools/env/fw_printenv ${D}/${bindir}/fw_printenv
++                        ln -sf fw_printenv ${D}/${bindir}/fw_setenv
++                    fi
+                 fi
+             done
+             unset  j
+@@ -133,6 +148,9 @@ do_install () {
+         install -d ${D}/boot
+         install -m 644 ${B}/${UBOOT_BINARY} ${D}/boot/${UBOOT_IMAGE}
+         ln -sf ${UBOOT_IMAGE} ${D}/boot/${UBOOT_BINARY}
++        install -d ${D}/${bindir}
++        install -m 644 ${B}/${config}/tools/env/fw_printenv ${D}/${bindir}/fw_printenv
++        ln -sf fw_printenv ${D}/${bindir}/fw_setenv
+     fi
+
+     if [ -n "${UBOOT_ELF}" ]
+@@ -309,4 +327,11 @@ do_deploy () {
+     fi
+ }
+
++PACKAGES =+ "${PN}-fw-utils"
++FILES:${PN}-fw-utils = "${sysconfdir} \
++                        ${bindir} \
++"
++INSANE_SKIP:${PN} += "already-stripped"
++INSANE_SKIP:${PN}-fw-utils += "already-stripped"
++
+ addtask deploy before do_build after do_compile
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Enable-runtime-env-configuration.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Enable-runtime-env-configuration.patch
+new file mode 100644
+index 00000000..1d460d8a
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Enable-runtime-env-configuration.patch
+@@ -0,0 +1,24 @@
++From e14eac311ab404f1a702cef6db31ea295fc7a889 Mon Sep 17 00:00:00 2001
++From: Omkar Bolla <omkar.bolla@quest-global.com>
++Date: Thu, 13 Mar 2025 08:34:34 +0530
++Subject: [PATCH] Enable runtime env configuration
++
++---
++ tools/env/fw_env.h | 1 +
++ 1 file changed, 1 insertion(+)
++
++diff --git a/tools/env/fw_env.h b/tools/env/fw_env.h
++index 78c803c9..e21b2ade 100644
++--- a/tools/env/fw_env.h
+++++ b/tools/env/fw_env.h
++@@ -12,6 +12,7 @@
++  * This can be changed in future
++  */
++ #define FW_ENV_API_VERSION	1
+++#define CONFIG_FILE  "/etc/fw_env.config"
++
++ struct env_opts {
++ #ifdef CONFIG_FILE
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
+new file mode 100644
+index 00000000..e34943cd
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
+@@ -0,0 +1,41 @@
++# Configuration file for fw_(printenv/setenv) utility.
++# Up to two entries are valid, in this case the redundant
++# environment sector is assumed present.
++# Notice, that the "Number of sectors" is not required on NOR and SPI-dataflash.
++# Futhermore, if the Flash sector size is omitted, this value is assumed to
++# be the same as the Environment size, which is valid for NOR and SPI-dataflash
++# Device offset must be prefixed with 0x to be parsed as a hexadecimal value.
++
++# NOR example
++# MTD device name	Device offset	Env. size	Flash sector size	Number of sectors
++#/dev/mtd1		0x0000		0x4000		0x4000
++#/dev/mtd2		0x0000		0x4000		0x4000
++
++# MTD SPI-dataflash example
++# MTD device name	Device offset	Env. size	Flash sector size	Number of sectors
++#/dev/mtd5		0x4200		0x4200
++#/dev/mtd6		0x4200		0x4200
++
++# NAND example
++#/dev/mtd0		0x4000		0x4000		0x20000			2
++
++# On a block device a negative offset is treated as a backwards offset from the
++# end of the device/partition, rather than a forwards offset from the start.
++
++# Block device example
++#/dev/mmcblk0		0xc0000		0x20000
++#/dev/mmcblk0		-0x20000	0x20000
++
++# VFAT example
++#/boot/uboot.env	0x0000          0x4000
++
++# UBI volume
++#/dev/ubi0_0		0x0		0x1f000		0x1f000
++#/dev/ubi0_1		0x0		0x1f000		0x1f000
++
++# UBI volume by name
++#/dev/ubi0:env		0x0		0x1f000		0x1f000
++#/dev/ubi0:env-redund	0x0		0x1f000		0x1f000
++
++# mmc0 offset for u-boot env
++/dev/mmcblk0		0x110000	0x78000
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index 8568e541..29335c38 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -2,6 +2,8 @@ FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
+
+ SRC_URI_append = " \
+ 	${@oe.utils.conditional("USE_ECC", "1", "file://0001-arm-dts-reserved-ECC-memory-region-for-all-RZ-G2L-Se.patch", "", d)} \
++	file://0001-Enable-runtime-env-configuration.patch \
++	file://fw_env.config \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+--
+2.25.1

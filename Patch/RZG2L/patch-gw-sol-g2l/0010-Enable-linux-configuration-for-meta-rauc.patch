@@ -1,0 +1,27 @@
+Subject: [PATCH 10/14] Enable linux configuration for meta-rauc
+
+- Below configurations are required to enable for rauc
+  CONFIG_BLK_DEV_LOOP=y
+  CONFIG_SQUASHFS=y
+  CONFIG_MD=y
+  CONFIG_BLK_DEV_DM=y
+  CONFIG_DM_VERITY=y
+  CONFIG_CRYPTO_SHA256=y
+
+---
+ .../recipes-kernel/linux/{linux-yocto => linux-renesas}/rauc.cfg  | 0
+ .../linux/{linux-yocto_%.bbappend => linux-renesas_%.bbappend}    | 0
+ 2 files changed, 0 insertions(+), 0 deletions(-)
+ rename meta-rauc/recipes-kernel/linux/{linux-yocto => linux-renesas}/rauc.cfg (100%)
+ rename meta-rauc/recipes-kernel/linux/{linux-yocto_%.bbappend => linux-renesas_%.bbappend} (100%)
+
+diff --git a/meta-rauc/recipes-kernel/linux/linux-yocto/rauc.cfg b/meta-rauc/recipes-kernel/linux/linux-renesas/rauc.cfg
+similarity index 100%
+rename from meta-rauc/recipes-kernel/linux/linux-yocto/rauc.cfg
+rename to meta-rauc/recipes-kernel/linux/linux-renesas/rauc.cfg
+diff --git a/meta-rauc/recipes-kernel/linux/linux-yocto_%.bbappend b/meta-rauc/recipes-kernel/linux/linux-renesas_%.bbappend
+similarity index 100%
+rename from meta-rauc/recipes-kernel/linux/linux-yocto_%.bbappend
+rename to meta-rauc/recipes-kernel/linux/linux-renesas_%.bbappend
+--
+2.25.1

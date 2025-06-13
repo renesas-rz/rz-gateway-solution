@@ -1,0 +1,173 @@
+diff --git a/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb b/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
+index 8d78f13a..44658f7b 100644
+--- a/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
++++ b/recipes-devtools/amazon-corretto/corretto-11-bin_11.0.23.9.1.bb
+@@ -43,5 +43,9 @@ RDEPENDS:${PN}-ptest:prepend = "\
+     greengrass-bin \
+     "
+ 
++do_install_append_aarch64() {
++    mv ${D}/usr/lib64 ${D}/usr/lib
++}
++
+ # this is used by meta-aws-tests to find this recipe for ptests, so it should stay in this file instead of moving into corretto-bin-common
+ inherit ptest
+diff --git a/recipes-sdk/aws-c-cal/aws-c-cal_0.6.11.bb b/recipes-sdk/aws-c-cal/aws-c-cal_0.6.11.bb
+index dae44237..1ddeafb0 100644
+--- a/recipes-sdk/aws-c-cal/aws-c-cal_0.6.11.bb
++++ b/recipes-sdk/aws-c-cal/aws-c-cal_0.6.11.bb
+@@ -54,6 +54,7 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
+     -DCMAKE_BUILD_TYPE=Release \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
+ "
+ 
+ BBCLASSEXTEND = "native nativesdk"
+diff --git a/recipes-sdk/aws-c-http/aws-c-http_0.8.1.bb b/recipes-sdk/aws-c-http/aws-c-http_0.8.1.bb
+index dd968419..9f677a36 100644
+--- a/recipes-sdk/aws-c-http/aws-c-http_0.8.1.bb
++++ b/recipes-sdk/aws-c-http/aws-c-http_0.8.1.bb
+@@ -52,6 +52,11 @@ EXTRA_OECMAKE += "\
+     -DBUILD_TESTING=OFF \
+     -DCMAKE_MODULE_PATH=${STAGING_LIBDIR}/cmake \
+     -DCMAKE_BUILD_TYPE=Release \
++    -Daws-c-io_DIR=${STAGING_LIBDIR}/aws-c-io/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
++    -Daws-c-compression_DIR=${STAGING_LIBDIR}/aws-c-compression/cmake \
+ "
+ 
+ FILES:${PN}-dev += "${libdir}/*/cmake"
+diff --git a/recipes-sdk/aws-c-io/aws-c-io_0.14.7.bb b/recipes-sdk/aws-c-io/aws-c-io_0.14.7.bb
+index a546ca35..08e015db 100644
+--- a/recipes-sdk/aws-c-io/aws-c-io_0.14.7.bb
++++ b/recipes-sdk/aws-c-io/aws-c-io_0.14.7.bb
+@@ -50,6 +50,9 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_MODULE_PATH=${STAGING_LIBDIR}/cmake \
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
+ "
+ do_install_ptest () {
+    install -d ${D}${PTEST_PATH}/tests
+diff --git a/recipes-sdk/aws-c-iot/aws-c-iot_0.1.21.bb b/recipes-sdk/aws-c-iot/aws-c-iot_0.1.21.bb
+index c2cdba21..5ab40a00 100644
+--- a/recipes-sdk/aws-c-iot/aws-c-iot_0.1.21.bb
++++ b/recipes-sdk/aws-c-iot/aws-c-iot_0.1.21.bb
+@@ -52,6 +52,18 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_MODULE_PATH=${STAGING_LIBDIR}/cmake \
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Daws-c-http_DIR=${STAGING_LIBDIR}/aws-c-http/cmake \
++    -Daws-c-auth_DIR=${STAGING_LIBDIR}/aws-c-auth/cmake \
++    -Daws-c-io_DIR=${STAGING_LIBDIR}/aws-c-io/cmake \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
++    -Daws-c-compression_DIR=${STAGING_LIBDIR}/aws-c-compression/cmake \
++    -Daws-c-sdkutils_DIR=${STAGING_LIBDIR}/aws-c-sdkutils/cmake \
++    -Daws-c-mqtt_DIR=${STAGING_LIBDIR}/aws-c-mqtt/cmake \
++    -Daws-checksums_DIR=${STAGING_LIBDIR}/aws-checksums/cmake \
++    -Daws-c-event-stream_DIR=${STAGING_LIBDIR}/aws-c-event-stream/cmake \
++    -Daws-c-s3_DIR=${STAGING_LIBDIR}/aws-c-s3/cmake \
+ "
+ 
+ do_install_ptest () {
+diff --git a/recipes-sdk/aws-c-mqtt/aws-c-mqtt_0.10.4.bb b/recipes-sdk/aws-c-mqtt/aws-c-mqtt_0.10.4.bb
+index b22595cd..fa1f4f05 100644
+--- a/recipes-sdk/aws-c-mqtt/aws-c-mqtt_0.10.4.bb
++++ b/recipes-sdk/aws-c-mqtt/aws-c-mqtt_0.10.4.bb
+@@ -34,6 +34,12 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_MODULE_PATH=${STAGING_LIBDIR}/cmake \
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Daws-c-compression_DIR=${STAGING_LIBDIR}/aws-c-compression/cmake \
++    -Daws-c-http_DIR=${STAGING_LIBDIR}/aws-c-http/cmake \
++    -Daws-c-io_DIR=${STAGING_LIBDIR}/aws-c-io/cmake \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
+ "
+ 
+ PACKAGECONFIG ??= "\
+diff --git a/recipes-sdk/aws-c-s3/aws-c-s3_0.5.7.bb b/recipes-sdk/aws-c-s3/aws-c-s3_0.5.7.bb
+index dfcda810..3813a0a9 100644
+--- a/recipes-sdk/aws-c-s3/aws-c-s3_0.5.7.bb
++++ b/recipes-sdk/aws-c-s3/aws-c-s3_0.5.7.bb
+@@ -43,8 +43,16 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_MODULE_PATH=${STAGING_LIBDIR}/cmake \
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Daws-c-http_DIR=${STAGING_LIBDIR}/aws-c-http/cmake \
++    -Daws-c-auth_DIR=${STAGING_LIBDIR}/aws-c-auth/cmake \
++    -Daws-c-io_DIR=${STAGING_LIBDIR}/aws-c-io/cmake \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
++    -Daws-c-compression_DIR=${STAGING_LIBDIR}/aws-c-compression/cmake \
++    -Daws-c-sdkutils_DIR=${STAGING_LIBDIR}/aws-c-sdkutils/cmake \
++    -Daws-checksums_DIR=${STAGING_LIBDIR}/aws-checksums/cmake \
+ "
+-
+ do_install_ptest () {
+    install -d ${D}${PTEST_PATH}/tests
+    cp -r ${B}/tests/* ${D}${PTEST_PATH}/tests/
+diff --git a/recipes-sdk/aws-c-sdkutils/aws-c-sdkutils_0.1.16.bb b/recipes-sdk/aws-c-sdkutils/aws-c-sdkutils_0.1.16.bb
+index 1b5547db..2d91470f 100644
+--- a/recipes-sdk/aws-c-sdkutils/aws-c-sdkutils_0.1.16.bb
++++ b/recipes-sdk/aws-c-sdkutils/aws-c-sdkutils_0.1.16.bb
+@@ -37,6 +37,7 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
+     -DCMAKE_BUILD_TYPE=Release \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \ 
+ "
+ 
+ do_install_ptest () {
+diff --git a/recipes-sdk/aws-crt-cpp/aws-crt-cpp_0.26.8.bb b/recipes-sdk/aws-crt-cpp/aws-crt-cpp_0.26.8.bb
+index c8bee21a..4cd6d47e 100644
+--- a/recipes-sdk/aws-crt-cpp/aws-crt-cpp_0.26.8.bb
++++ b/recipes-sdk/aws-crt-cpp/aws-crt-cpp_0.26.8.bb
+@@ -39,6 +39,18 @@ EXTRA_OECMAKE += "\
+     -DCMAKE_PREFIX_PATH=$D/usr \
+     -DCMAKE_INSTALL_PREFIX=$D/usr \
+     -DBUILD_DEPS=OFF \
++    -Daws-c-cal_DIR=${STAGING_LIBDIR}/aws-c-cal/cmake \
++    -Daws-c-common_DIR=${STAGING_LIBDIR}/aws-c-common/cmake \
++    -Daws-c-http_DIR=${STAGING_LIBDIR}/aws-c-http/cmake \
++    -Daws-c-auth_DIR=${STAGING_LIBDIR}/aws-c-auth/cmake \
++    -Daws-c-io_DIR=${STAGING_LIBDIR}/aws-c-io/cmake \
++    -Ds2n_DIR=${STAGING_LIBDIR}/s2n/cmake \
++    -Daws-c-compression_DIR=${STAGING_LIBDIR}/aws-c-compression/cmake \
++    -Daws-c-sdkutils_DIR=${STAGING_LIBDIR}/aws-c-sdkutils/cmake \
++    -Daws-c-mqtt_DIR=${STAGING_LIBDIR}/aws-c-mqtt/cmake \
++    -Daws-checksums_DIR=${STAGING_LIBDIR}/aws-checksums/cmake \
++    -Daws-c-event-stream_DIR=${STAGING_LIBDIR}/aws-c-event-stream/cmake \
++    -Daws-c-s3_DIR=${STAGING_LIBDIR}/aws-c-s3/cmake \
+     "
+ 
+ # for generating Makefiles to run tests
+diff --git a/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb b/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
+index d0294754..d73a4b07 100644
+--- a/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
++++ b/recipes-sdk/aws-iot-greengrass-sdk/aws-greengrass-core-sdk-c_1.2.0.bb
+@@ -12,6 +12,15 @@ S = "${WORKDIR}/git"
+ 
+ inherit cmake
+ 
++do_install:append_aarch64() {
++    mv ${D}/usr/lib ${D}${libdir}
++    # Remove unused files
++    rm -rf ${D}${libdir}/cmake
++    rm -rf ${D}${libdir}/.debug
++    # install the library
++    install -d ${D}${libdir}
++}
++
+ do_install:append() {
+     # Remove unused files
+     rm -rf ${D}${libdir}/cmake

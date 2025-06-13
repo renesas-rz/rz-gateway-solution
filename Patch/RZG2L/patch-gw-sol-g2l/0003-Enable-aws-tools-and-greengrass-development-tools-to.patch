@@ -1,0 +1,33 @@
+Subject: [PATCH 03/14] Enable aws tools and greengrass development tools to bsp image
+
+---
+ .../meta-rz-common/include/core-image-bsp.inc      | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index bc4137db..44b8955c 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -60,6 +60,20 @@ IMAGE_INSTALL_append = " \
+     tcf-agent \
+ "
+
++# Additional tools to support aws greengrass development
++IMAGE_INSTALL_append = " \
++	less curl \
++        aws-cli \
++        aws-cli-examples \
++        greengrass-bin-demo \
++        aws-iot-device-client \
++        aws-iot-device-sdk-cpp-v2 \
++	aws-iot-device-sdk-python-v1 \
++	aws-iot-device-sdk-python-v2 \
++        aws-greengrass-core-sdk-c \
++	aws-greengrass-core-sdk-python \
++"
++
+ # Additional tools for support testing Realtime characteristic in system
+ IMAGE_INSTALL_append = " \
+ 	${@oe.utils.conditional("IS_RT_BSP", "1", " rt-tests ", " ",d)} \
+--
+2.25.1

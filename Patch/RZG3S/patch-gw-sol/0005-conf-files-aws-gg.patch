@@ -1,0 +1,30 @@
+diff --git a/meta-rzg3s/docs/template/conf/bblayers.conf.sample b/meta-rzg3s/docs/template/conf/bblayers.conf.sample
+--- a/meta-rzg3s/docs/template/conf/bblayers.conf.sample
++++ b/meta-rzg3s/docs/template/conf/bblayers.conf.sample
+@@ -16,3 +16,5 @@
+   ${TOPDIR}/../meta-openembedded/meta-python \
+   ${TOPDIR}/../meta-openembedded/meta-multimedia \
++  ${TOPDIR}/../meta-openembedded/meta-networking \
++  ${TOPDIR}/../meta-aws \
+   "
+diff --git a/meta-rzg3s/docs/template/conf/local.conf.sample b/meta-rzg3s/docs/template/conf/local.conf.sample
+--- a/meta-rzg3s/docs/template/conf/local.conf.sample
++++ b/meta-rzg3s/docs/template/conf/local.conf.sample
+@@ -287,7 +287,8 @@
+ 
+ CIP_MODE = "Buster"
+ 
+-INCOMPATIBLE_LICENSE = "GPLv3 GPLv3+"
++#INCOMPATIBLE_LICENSE = "GPLv3 GPLv3+"
++INCOMPATIBLE_LICENSE = "GPLv3+"
+ 
+ LICENSE_FLAGS_WHITELIST = " \
+ 	commercial_gstreamer1.0-plugins-ugly commercial_mpeg2dec \
+diff --git a/meta-rzg3s/docs/template/conf/local.conf.sample b/meta-rzg3s/docs/template/conf/local.conf.sample
+--- a/meta-rzg3s/docs/template/conf/local.conf.sample
++++ b/meta-rzg3s/docs/template/conf/local.conf.sample
+@@ -331,4 +332,5 @@
+ 
+ DL_DIR = "${TOPDIR}/downloads"
+ BB_NO_NETWORK = "0"
++IMAGE_INSTALL_append = " python3-smbus2"

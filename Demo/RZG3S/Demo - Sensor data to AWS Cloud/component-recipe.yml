@@ -1,0 +1,51 @@
+---
+RecipeFormatVersion: "2020-01-25"
+ComponentName: "com.example.HS3001Publisher"
+ComponentVersion: "1.0.0"
+ComponentType: "aws.greengrass.generic"
+ComponentDescription: "Publishes HS3001 PMOD sensor data to AWS IoT Core."
+ComponentPublisher: "RZ-Gateway-Solution"
+ComponentConfiguration:
+  DefaultConfiguration:
+    publishInterval: 10
+    AccessControl:
+      aws.greengrass.ipc.mqttproxy:
+        com.example.HS3001Publisher:
+          policyDescription: "Allow HS3001Publisher to publish MQTT messages"
+          operations:
+          - "aws.greengrass#PublishToIoTCore"
+          resources:
+          - "hs3001/data"
+      aws.greengrass.tokenexchange:
+        com.example.HS3001Publisher:
+          policyDescription: "Allow HS3001Publisher to access AWS services"
+          operations:
+          - "aws.greengrass#GetComponentDetails"
+          - "aws.greengrass#ResolveComponentVersion"
+          resources:
+          - "*"
+      aws.s3:
+        com.example.HS3001Publisher:
+          policyDescription: "Allow HS3001Publisher to read from S3"
+          operations:
+          - "aws.s3#GetObject"
+          resources:
+          - "arn:aws:s3:::<your-bucket-name>/hs3001_publisher.py"
+Manifests:
+- Platform:
+    os: "linux"
+  Lifecycle:
+    Install:
+      Script: "echo \"Downloading component artifact from S3...\"\naws s3 cp s3://<your-bucket-name>/hs3001_publisher.py\
+        \ {artifacts:path}/\nchmod +x {artifacts:path}/hs3001_publisher.py\n"
+    Run:
+      Script: "echo \"Starting HS3001Publisher component...\"\npython3 {artifacts:path}/hs3001_publisher.py\n"
+  Artifacts:
+  - Uri: "s3://<your-bucket-name>/hs3001_publisher.py"
+    Digest: "52nZsubm1ZP6zAxCCF+UKJ5YzlH3G/ZIU9yl4dZ+5Io="
+    Algorithm: "SHA-256"
+    Unarchive: "NONE"
+    Permission:
+      Read: "OWNER"
+      Execute: "NONE"
+Lifecycle: {}

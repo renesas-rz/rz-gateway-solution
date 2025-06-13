@@ -1,0 +1,103 @@
+Subject: [PATCH 11/14] Enable rauc on core-bsp-image
+
+- Enable rauc meta layer and configuration
+- Created openssl certeficate for signing the bundle
+  command:
+  openssl req -x509 -newkey rsa:4096 -nodes -keyout demo.key.pem -out demo.cert.pem -subj "/O=rauc Inc./CN=rauc-demo"
+- Created system.config for rauc bundle installation
+
+---
+ meta-rauc/recipes-core/rauc/files/ca.cert.pem | 36 +++++++++++++++----
+ meta-rauc/recipes-core/rauc/files/system.conf | 15 ++++++++
+ .../docs/template/conf/bblayers.conf.sample   |  2 ++
+ .../docs/template/conf/local.conf.sample      |  3 ++
+ 4 files changed, 50 insertions(+), 6 deletions(-)
+
+diff --git a/meta-rauc/recipes-core/rauc/files/ca.cert.pem b/meta-rauc/recipes-core/rauc/files/ca.cert.pem
+index 41bb8438..5b6680c4 100644
+--- a/meta-rauc/recipes-core/rauc/files/ca.cert.pem
++++ b/meta-rauc/recipes-core/rauc/files/ca.cert.pem
+@@ -1,6 +1,30 @@
+-# This is a dummy keyring file. Please overwrite this with one that matches
+-# your X509 infrastructure if you intend to use RAUC for secure updates!
+-#
+-# If you really do not intend to actively use the security features or for
+-# testing you may create a self-signed development certificate by executing the
+-# script `openssl-ca.sh` from the `scripts` folder.
++-----BEGIN CERTIFICATE-----
++MIIFMTCCAxmgAwIBAgIUPIHiCv9peNYasMWt89CJKcnpTzowDQYJKoZIhvcNAQEL
++BQAwKDESMBAGA1UECgwJcmF1YyBJbmMuMRIwEAYDVQQDDAlyYXVjLWRlbW8wHhcN
++MjUwMzAzMTIxNDE3WhcNMjUwNDAyMTIxNDE3WjAoMRIwEAYDVQQKDAlyYXVjIElu
++Yy4xEjAQBgNVBAMMCXJhdWMtZGVtbzCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC
++AgoCggIBAMdM0hg5TDLdfcqc0zlwo3qJWS3Yv5/Eiu/6Ext5SxzEZzrG7WFZehlG
++0DpwY+bDpCzyKAArxHO+nP3FoTj1U2GyJQWh7Ng56Brm8cgQNm6zz2G6qqst0s4C
++mfw3lvAO9IHFk+mqE/wut/ys+JdOZYFFj1w1fElQhHmsbQBtOvCibY+tVhbQoQ7e
++Dwj0I2XB9UdQqoQLlYMEDVrxMQZVc5tXAYw7EXGgHBJuuq4/sCZljUqfrthAkyRJ
++drbNmHqeWEEvzZ+nk0l9bnNfMPgbA4iwwsKUeGAfd1Es6nWAE+n3vYHRhn+viwvE
++HcrYGWvnZWdbpD+GizAY7o9TTxrKYhmdjbhOUTY5pt95TkAXKuUwyb8rNZlsu1JG
++aR9clBtrMDqTJoECXsL8Rh37k0fKRvQM1tIFAc0nVWiWQfmSGZ2kPH9TtXbWaItY
++9aQZbwQjvCLiq0ZsXeMgMORi0F4CzXL19vBX8LuFV3hLLg9v5GwD70TIAtHA0VkO
++NOg0ymzuPSjqDreveGIiEZS5laDHjK3ubeawjlXk9sNECvcguiBo7M2Tb9odsKJ1
++k7qnMb3ilNMOUBjHm8+4YVsffeEv8Y7Q8Ibaw+8GAhVk7SSuaAxnAaepRENuMkhL
++rwZApmvCg7wERcxlIgUhyGOf/92YpkwlClaUcAzLT2tvp9abzqglAgMBAAGjUzBR
++MB0GA1UdDgQWBBS/quUKSg8Oxt0gjTdbye5+rirK2jAfBgNVHSMEGDAWgBS/quUK
++Sg8Oxt0gjTdbye5+rirK2jAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
++A4ICAQAv9G1moe/m5c3/9z+VYJRSOBVXG3trMBHWldFAUxVPk+kzf6mjkAhGhU6t
++pQ7MJpaiL5B2Ykv0HtALQfer9BTqz1bO747+h/dDU3ncEG0gZJHH9zi5k3r7Pdy7
++9lutaGhdIuwjD++7fT8RPQ51oEy2x+gkeWybcpugrFLLrJf+98diLHlMbPugYMo4
++8fOZuSv+R6Sxz1Qsxr1Q8WXWHYK2kYt04aj+9fytPULLgVqZ/Ias+QUD4NN9UlI9
++pOhm4D/mZaGd7ajowgqkhvwPjqZDSNKp/2oZFUqbzcP5yxIyYNdk997+S61fo9KH
++/TDRSn7/Pi7PDTqKMmxFzxom8kEFJMh7Fk3eOfhVXH1WVH6sBlDKruuggJOZpWF2
++UUZRy0SCl2tJPESKlv4lMalAdlOydtCvE4qmaw3wkhgm7vDkYWyk7ZkfdwExzvM3
++do/0seCvrowyLUXAfQ8Drgv6FvFzqoAW44USmYroBsfvrISDFzERJuxuaN40pIgz
++9zfIq87dhyaIH1/fEASD7Af5+9ScGVUcGST5X9QqvvBEGK4L9y8BlJUM3f0WAtUp
++Ldqat5f0d0NRW8LYmWhm84repFar0D2kiyKujY+R2srw1bBMcJpai/1scNZzgZJY
++XuJAtrObFZodVgJ1NzCvc3ZMJdeAVp2dl6WUq395gYA8uTliUw==
++-----END CERTIFICATE-----
+diff --git a/meta-rauc/recipes-core/rauc/files/system.conf b/meta-rauc/recipes-core/rauc/files/system.conf
+index 35580825..2c12aa91 100644
+--- a/meta-rauc/recipes-core/rauc/files/system.conf
++++ b/meta-rauc/recipes-core/rauc/files/system.conf
+@@ -36,3 +36,18 @@
+ # device=/dev/mmcblkXp4
+ # type=ext4
+ # parent=rootfs.1
++[system]
++compatible=rauc-demo-x86
++bootloader=uboot
++bundle-formats=-plain
++data-directory=/tmp/rauc
++[keyring]
++path=demo.cert.pem
++[slot.rootfs.0]
++device=/dev/nvme0n1p1
++type=ext4
++bootname=A
++[slot.rootfs.1]
++device=/ dev/nvme0n1p2
++type=ext4
++bootname=B
+diff --git a/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample b/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
+index 9084f2ed..874daa19 100644
+--- a/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
++++ b/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
+@@ -17,4 +17,6 @@ BBLAYERS ?= " \
+   ${TOPDIR}/../meta-openembedded/meta-multimedia \
+   ${TOPDIR}/../meta-openembedded/meta-networking \
+   ${TOPDIR}/../meta-aws \
++  ${TOPDIR}/../meta-rauc \
+   "
++
+diff --git a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+index c58de8a3..207f7c2a 100644
+--- a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
++++ b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+@@ -352,3 +352,6 @@ IMAGE_ROOTFS_EXTRA_SPACE = "1048576"
+ DL_DIR = "${TOPDIR}/downloads"
+ BB_NO_NETWORK = "0"
+
++#Enable rauc feature
++DISTOR_FEATURES_append = " rauc"
++IMAGE_INSTALL:append = " rauc"
+--
+2.25.1

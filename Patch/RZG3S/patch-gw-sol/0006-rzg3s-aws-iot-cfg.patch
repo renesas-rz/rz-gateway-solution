@@ -1,0 +1,40 @@
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas/aws-iot.cfg b/meta-rzg3s/recipes-kernel/linux/linux-renesas/aws-iot.cfg
+--- a/meta-rzg3s/recipes-kernel/linux/linux-renesas/aws-iot.cfg
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas/aws-iot.cfg
+@@ -0,0 +1,21 @@
++# Configurations must enable to support aws green grass device
++
++# Namespace:
++CONFIG_IPC_NS=y
++CONFIG_UTS_NS=y
++CONFIG_USER_NS=y
++CONFIG_PID_NS=y
++
++# Cgroups:
++CONFIG_CGROUP_DEVICE=y
++CONFIG_CGROUPS=y
++CONFIG_MEMCG=y
++
++# Others:
++CONFIG_POSIX_MQUEUE=y
++CONFIG_OVERLAY_FS=y
++CONFIG_HAVE_ARCH_SECCOMP_FILTER=y
++CONFIG_SECCOMP_FILTER=y
++CONFIG_KEYS=y
++CONFIG_SECCOMP=y
++CONFIG_SHMEM=y
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend b/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
+--- a/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
++++ b/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
+@@ -8,8 +8,9 @@
+ 	${@bb.utils.contains('MACHINE_FEATURES', 'atheros-ar9287-wifi', 'file://atheros-ar9287-wifi.cfg', '',d)} \
+ 	${@bb.utils.contains('MACHINE_FEATURES', 'rtl8169-firmware', 'file://rtl8169-firmware.cfg', '',d)} \
+ 	${@bb.utils.contains('MACHINE_FEATURES', 'nvme', 'file://nvme.cfg', '',d)} \
++	file://aws-iot.cfg \
+  "
+ 
+ SRC_URI_append = " file://patches.scc"
+ 
+ BUILTIN_FIRMWARE_DIR = "${STAGING_KERNEL_DIR}/drivers/base/firmware_loader/builtin"
+ do_download_firmware () {
+ 	if [ -f ${WORKDIR}/iwlwifi-cc-a0-46.ucode ]; then

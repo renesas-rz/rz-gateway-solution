@@ -1,0 +1,31 @@
+diff --git a/meta-rz-common/recipes-kernel/linux/linux-renesas_5.10.bb b/meta-rz-common/recipes-kernel/linux/linux-renesas_6.1.bb
+similarity index 82%
+rename from meta-rz-common/recipes-kernel/linux/linux-renesas_5.10.bb
+rename to meta-rz-common/recipes-kernel/linux/linux-renesas_6.1.bb
+index 0fa162dc..68bbaf2a 100644
+--- a/meta-rz-common/recipes-kernel/linux/linux-renesas_5.10.bb
++++ b/meta-rz-common/recipes-kernel/linux/linux-renesas_6.1.bb
+@@ -12,13 +12,13 @@
+ COMPATIBLE_MACHINE_rzg3s = "(rzg3s-dev|smarc-rzg3s)"
+ 
+ KERNEL_URL = " \
+-    git://github.com/renesas-rz/rz_linux-cip.git"
+-BRANCH = "${@oe.utils.conditional("IS_RT_BSP", "1", "rz-5.10-cip41-rt17", "rz-5.10-cip41",d)}"
+-SRCREV = "${@oe.utils.conditional("IS_RT_BSP", "1", "13d833431c8f69b225e3bb94cb72b06774fd47c0", "0030c60827fe590e8dbdfe58a9844328b9e28b9a",d)}"
++    git://git.kernel.org/pub/scm/linux/kernel/git/cip/linux-cip.git"
++BRANCH = "${@oe.utils.conditional("IS_RT_BSP", "1", "linux-6.1.y-cip-rt", "linux-6.1.y-cip",d)}"
++SRCREV = "${@oe.utils.conditional("IS_RT_BSP", "1", "9ad406a6eb9a996cd84fff37c3902a96596ca9e5", "a95ad34cd9f7ac6b3c36e4aedd5e20317a7e1ecf",d)}"
+ 
+-SRC_URI = "${KERNEL_URL};protocol=https;nocheckout=1;branch=${BRANCH}"
++SRC_URI = "${KERNEL_URL};protocol=https;branch=${BRANCH}"
+ LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
+-LINUX_VERSION ?= "${@oe.utils.conditional("IS_RT_BSP", "1", "5.10.201-cip41-rt17", "5.10.201-cip41",d)}"
++LINUX_VERSION ?= "${@oe.utils.conditional("IS_RT_BSP", "1", "6.1.102-cip26-rt14", "6.1.124",d)}"
+ 
+ PV = "${LINUX_VERSION}+git${SRCPV}"
+ PR = "r1"
+ 
+diff --git a/meta-rzg3s/recipes-kernel/linux/linux-renesas_5.10.bbappend b/meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend
+similarity index 100%
+rename from meta-rzg3s/recipes-kernel/linux/linux-renesas_5.10.bbappend
+rename to meta-rzg3s/recipes-kernel/linux/linux-renesas_6.1.bbappend

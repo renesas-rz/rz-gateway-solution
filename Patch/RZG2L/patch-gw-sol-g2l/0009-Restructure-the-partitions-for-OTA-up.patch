@@ -1,0 +1,88 @@
+Subject: [PATCH 09/14] Restructure the partitions for OTA update
+
+- Added new wks file for eSD Image
+- Added initial partitions info to wks file (rz-image-bootpart-esd-pmic-ota-update.wks)
+- Using the eSD image, able to boot from SD card
+
+---
+ .../conf/machine/include/rzg2-common.inc      |  1 +
+ .../include/core-image-renesas-base.inc       |  1 +
+ .../rz-image-bootpart-esd-pmic-ota-update.wks | 25 +++++++++++++++++++
+ .../docs/template/conf/local.conf.sample      |  6 ++++-
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+ create mode 100644 meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+
+diff --git a/meta-renesas/meta-rz-common/conf/machine/include/rzg2-common.inc b/meta-renesas/meta-rz-common/conf/machine/include/rzg2-common.inc
+index 50efe46c..b0aede88 100644
+--- a/meta-renesas/meta-rz-common/conf/machine/include/rzg2-common.inc
++++ b/meta-renesas/meta-rz-common/conf/machine/include/rzg2-common.inc
+@@ -11,6 +11,7 @@ MACHINE_FEATURES = ""
+ KERNEL_IMAGETYPE = "Image"
+ IMAGE_FSTYPES_append = " tar.bz2 ext4"
+ IMAGE_FSTYPES_append = " ${@oe.utils.conditional("WKS_SUPPORT", "1", "wic.gz wic.bmap", "", d)} "
++IMAGE_FSTYPES_append = " ${@oe.utils.conditional("WKS_SUPPORT", "2", "wic.gz wic.bmap", "", d)} "
+
+ SERIAL_CONSOLES = "115200;ttySC0"
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc b/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
+index 568b631c..90667f37 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-renesas-base.inc
+@@ -177,6 +177,7 @@ WKS_DEFAULT_FILE_rzg2l = "rz-image-bootpart-esd.wks"
+ WKS_DEFAULT_FILE_smarc-rzg2l = "rz-image-bootpart-esd-pmic.wks"
+
+ WKS_FILE ?= "${@oe.utils.conditional("WKS_SUPPORT", "1", "${WKS_DEFAULT_FILE}", "", d)}"
++WKS_FILE += "${@oe.utils.conditional("WKS_SUPPORT", "2", "rz-image-bootpart-esd-pmic-ota-update.wks", "", d)}"
+
+ # Force remake wic image if its inputs were changed (WIC_INPUT_DEPENDS are defined in each machine conf)
+ # Note that environment variable WKS_FILE_DEPENDS can be used here, but it makes do_rootfs rerun as well
+diff --git a/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+new file mode 100644
+index 00000000..ef8d7115
+--- /dev/null
++++ b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+@@ -0,0 +1,25 @@
++# Short-description: Create SD card image for eSD boot
++# Long-description: Creates a SD card image that can be used to boot up RZ boards.
++#                   First area (unformatted) contains bootloader
++#                   Second area (first partition) contains files of bootloader and related components
++#                   Last area (second partition) contains rootfs, as well as Linux image and devicetree
++#                   Note: for eSD boot, SD card must be mmc0. If not use eSD boot mode, on the boards
++#                         with multiple SD card slots, SD card can be either mmc0 or mmc1.
++
++# start_offset=0x200,  end_offset=0xFFF, size=512
++part --source rawcopy --sourceparams="file=bl2_bp_esd-${MACHINE}_pmic.bin" --no-table
++# start_offset=0x1000, end_offset=0xFFFF, size=60K
++part --source rawcopy --sourceparams="file=bl2-${MACHINE}_pmic.bin" --no-table --align 4
++# start_offset=0x10000, end_offset=0x10FFFF, size=1M
++part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 64
++# start_offset=0x110000, end_offset=0x187FFF, size=480K, Dummy env image
++part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 1088
++# start_offset=0x188000, end_offset=0x1FFFFF, size=480K, Dummy env image
++part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 1568
++
++# Partitions for bootloader and Rootfs
++part --source bootimg-partition --fstype=vfat --label bootloaderfiles_A --align 2048 --fixed-size 256M
++part --source rootfs            --fstype=ext4 --label root_A           --align 4 --size 2G
++part --source bootimg-partition --fstype=vfat --label bootloaderfiles_B --align 4 --fixed-size 256M
++part --source rootfs            --fstype=ext4 --label root_B            --align 4 --size 2G
++#part /userdata --fstype=ext4 --label userdata --align 4 --size 1G
+diff --git a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+index c9a83331..c58de8a3 100644
+--- a/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
++++ b/meta-renesas/meta-rzg2l/docs/template/conf/local.conf.sample
+@@ -322,7 +322,11 @@ PACKAGE_INSTALL_remove = " dnf "
+
+ # Support WIC images with default wks from WKS_DEFAULT_FILE
+ # Reupdate WKS_DEFAULT_FILE if want to support another wks file.
+-WKS_SUPPORT ?= "1"
++#
++# If WKS_SUPPORT = 1, generates wic image using rz-image-bootpart-esd-pmic.wks config
++# If WKS_SUPPORT = 2, generates wic image using rz-image-bootpart-esd-pmic-ota-update.wks config
++# If WKS_SUPPORT is having other than 1 and 2, wic image cration is disabled.
++WKS_SUPPORT ?= "2"
+ # Defines additional free disk space created in the image in Kbytes.
+ IMAGE_ROOTFS_EXTRA_SPACE = "1048576"
+
+--
+2.25.1

@@ -1,0 +1,19 @@
+Subject: [PATCH 02/14] Enabling meta-aws on VLP Linux
+
+---
+ meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample b/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
+index 30296328..9084f2ed 100644
+--- a/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
++++ b/meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample
+@@ -15,4 +15,6 @@ BBLAYERS ?= " \
+   ${TOPDIR}/../meta-openembedded/meta-oe \
+   ${TOPDIR}/../meta-openembedded/meta-python \
+   ${TOPDIR}/../meta-openembedded/meta-multimedia \
++  ${TOPDIR}/../meta-openembedded/meta-networking \
++  ${TOPDIR}/../meta-aws \
+   "
+--
+2.25.1

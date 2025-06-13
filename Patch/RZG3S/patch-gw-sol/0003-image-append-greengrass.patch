@@ -1,0 +1,18 @@
+diff --git a/meta-rz-common/include/core-image-bsp.inc b/meta-rz-common/include/core-image-bsp.inc
+--- a/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-rz-common/include/core-image-bsp.inc
+@@ -64,3 +64,14 @@
+ IMAGE_INSTALL_append = " \
+ 	${@oe.utils.conditional("IS_RT_BSP", "1", " rt-tests ", " ",d)} \
+ "
++# Additional tools for AWS support
++IMAGE_INSTALL_append = " \
++        aws-cli \
++        aws-cli-examples \
++        greengrass-bin-demo \
++        aws-iot-device-client \
++        aws-c-auth aws-c-cal aws-c-common aws-c-compression aws-c-event-stream \
++        aws-checksums aws-c-http aws-c-io aws-c-iot aws-c-mqtt aws-crt-cpp \
++        aws-crt-python aws-c-s3 aws-c-sdkutils aws-iot-device-sdk-cpp-v2 aws-iot-device-sdk-python-v1 aws-iot-device-sdk-python-v2 \
++        aws-greengrass-core-sdk-c aws-greengrass-core-sdk-python aws-lc s2n \
++"
