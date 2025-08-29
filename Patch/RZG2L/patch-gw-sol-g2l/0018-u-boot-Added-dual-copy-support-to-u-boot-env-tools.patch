@@ -1,0 +1,123 @@
+Subject: [PATCH 18/23] u-boot: Added dual copy support to u-boot env tools
+
+- Implemented code to support daul copy to u-boot env
+  fw_printenv and fw_setenv linux tools
+- Added redundant buufer location details to fw_env.config file
+- This patch copies the env changes to both buffers from linux
+
+---
+ ...-to-u-boot-fw_printenv-and-fw_setenv.patch | 80 +++++++++++++++++++
+ .../recipes-bsp/u-boot/u-boot/fw_env.config   |  1 +
+ .../u-boot/u-boot_2021.10.bbappend            |  1 +
+ 3 files changed, 82 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch
+new file mode 100644
+index 00000000..3fd74955
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch
+@@ -0,0 +1,80 @@
++From 3f65d5b06c95832396f769739595075e8a152840 Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:36:59 +0530
++Subject: [PATCH] Added dual copy to u-boot fw_printenv and fw_setenv
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ tools/env/fw_env.c | 26 ++++++++++++++++++++++++++
++ 1 file changed, 26 insertions(+)
++
++diff --git a/tools/env/fw_env.c b/tools/env/fw_env.c
++index 2a61a5d6f0..a136f94bb5 100644
++--- a/tools/env/fw_env.c
+++++ b/tools/env/fw_env.c
++@@ -1190,7 +1190,9 @@ static int flash_write(int fd_current, int fd_target, int dev_target)
++ 	case FLAG_NONE:
++ 		break;
++ 	case FLAG_INCREMENTAL:
+++#ifndef CONFIG_SYS_ENV_DUAL_COPY
++ 		(*environment.flags)++;
+++#endif
++ 		break;
++ 	case FLAG_BOOLEAN:
++ 		*environment.flags = ENV_REDUND_ACTIVE;
++@@ -1374,6 +1376,19 @@ static int flash_io_write(int fd_current)
++ 	return rc;
++ }
++
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++static int flash_dev_write(int fd_current, int dev_target)
+++{
+++	int rc = 0;
+++	int current_dev = dev_current;
+++	dev_current = dev_target;
+++	rc = flash_io_write(fd_current);
+++	dev_current = current_dev;
+++
+++	return rc;
+++}
+++#endif
+++
++ static int flash_io(int mode)
++ {
++ 	int fd_current, rc;
++@@ -1388,7 +1403,12 @@ static int flash_io(int mode)
++ 	}
++
++ 	if (mode == O_RDWR) {
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++		rc = flash_dev_write(fd_current, !dev_current);
+++		rc |= flash_dev_write(fd_current, dev_current);
+++#else
++ 		rc = flash_io_write(fd_current);
+++#endif
++ 	} else {
++ 		rc = flash_read(fd_current);
++ 	}
++@@ -1456,6 +1476,9 @@ int fw_env_open(struct env_opts *opts)
++ 		ret = -EIO;
++ 		goto open_cleanup;
++ 	}
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++		redundant->flags = 1;
+++#endif
++
++ 	crc0 = crc32(0, (uint8_t *)environment.data, ENV_SIZE);
++
++@@ -1491,6 +1514,9 @@ int fw_env_open(struct env_opts *opts)
++ 			ret = -EIO;
++ 			goto open_cleanup;
++ 		}
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++		redundant->flags = 0;
+++#endif
++
++ 		/* Check flag scheme compatibility */
++ 		if (DEVTYPE(dev_current) == MTD_NORFLASH &&
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
+index 93768904..23cc670d 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/fw_env.config
+@@ -39,3 +39,4 @@
+
+ # mmc0 offset for u-boot env
+ /dev/mmcblk0		0x110000	0x19000
++/dev/mmcblk0		0x129000	0x19000
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index 21573ca9..1a0f77ce 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -7,6 +7,7 @@ SRC_URI_append = " \
+ 	file://0001-Adding-aws-greengrass-lambda-function-bootargs.patch \
+ 	file://0001-Added-u-boot-env-to-MMC.patch \
+ 	file://0001-Adding-dubble-buffer-to-environment.patch \
++	file://0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+--
+2.25.1

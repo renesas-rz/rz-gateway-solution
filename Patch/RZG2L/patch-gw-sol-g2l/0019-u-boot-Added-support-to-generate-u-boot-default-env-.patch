@@ -1,0 +1,65 @@
+Subject: [PATCH 19/24] u-boot: Added support to generate u-boot default env
+ bin file
+
+- Generated u-boot default env binary file
+- Dump the u-boot default env binary to wic image
+
+---
+ .../meta-rz-common/recipes-bsp/u-boot/u-boot.inc     | 12 ++++++++++--
+ .../wic/rz-image-bootpart-esd-pmic-ota-update.wks    |  8 ++++----
+ 2 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc b/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
+index daa56790..19402cdc 100644
+--- a/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
++++ b/meta-renesas/meta-rz-common/recipes-bsp/u-boot/u-boot.inc
+@@ -58,11 +58,14 @@ SPL_SYMLINK ?= "${SPL_BINARYNAME}-${MACHINE}"
+ # or 'boot.scr', should be packaged along with u-boot as well as placed in the
+ # deploy directory.  Machine configurations needing one of these files should
+ # include it in the SRC_URI and set the UBOOT_ENV parameter.
+-UBOOT_ENV_SUFFIX ?= "txt"
+-UBOOT_ENV ?= ""
++UBOOT_ENV_SUFFIX_TXT ?= "txt"
++UBOOT_ENV_SUFFIX ?= "bin"
++UBOOT_ENV ?= "u-boot-env-default"
++UBOOT_ENV_TEXT ?= "${UBOOT_ENV}.${UBOOT_ENV_SUFFIX_TXT}"
+ UBOOT_ENV_BINARY ?= "${UBOOT_ENV}.${UBOOT_ENV_SUFFIX}"
+ UBOOT_ENV_IMAGE ?= "${UBOOT_ENV}-${MACHINE}-${PV}-${PR}.${UBOOT_ENV_SUFFIX}"
+ UBOOT_ENV_SYMLINK ?= "${UBOOT_ENV}-${MACHINE}.${UBOOT_ENV_SUFFIX}"
++UBOOT_ENV_SIZE ?= "102400"
+
+ # U-Boot EXTLINUX variables. U-Boot searches for /boot/extlinux/extlinux.conf
+ # to find EXTLINUX conf file.
+@@ -99,6 +102,11 @@ do_compile () {
+ 		    if [ "${UBOOT_ENV_TOOLS_EN}" = "1" ]; then
+                         oe_runmake -C ${S} O=${B}/${config} ${UBOOT_MAKE_ENV_TOOLS}
+                     fi
++                    if [ -n "${UBOOT_ENV}" ]
++		    then
++		        ${S}/scripts/get_default_envs.sh ${B}/${config} > ${WORKDIR}/${UBOOT_ENV_TEXT}
++                        ${B}/${config}/tools/mkenvimage -r -s ${UBOOT_ENV_SIZE} -o ${WORKDIR}/${UBOOT_ENV_BINARY} ${WORKDIR}/${UBOOT_ENV_TEXT}
++		    fi
+                     for binary in ${UBOOT_BINARIES}; do
+                         k=$(expr $k + 1);
+                         if [ $k -eq $i ]; then
+diff --git a/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+index ef8d7115..e31c5317 100644
+--- a/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
++++ b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+@@ -12,10 +12,10 @@ part --source rawcopy --sourceparams="file=bl2_bp_esd-${MACHINE}_pmic.bin" --no-
+ part --source rawcopy --sourceparams="file=bl2-${MACHINE}_pmic.bin" --no-table --align 4
+ # start_offset=0x10000, end_offset=0x10FFFF, size=1M
+ part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 64
+-# start_offset=0x110000, end_offset=0x187FFF, size=480K, Dummy env image
+-part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 1088
+-# start_offset=0x188000, end_offset=0x1FFFFF, size=480K, Dummy env image
+-part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 1568
++# start_offset=0x110000, end_offset=0x187FFF, size=480K, Default env image
++part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --no-table  --align 1088
++# start_offset=0x188000, end_offset=0x1FFFFF, size=480K, Default env image
++part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --no-table  --align 1568
+
+ # Partitions for bootloader and Rootfs
+ part --source bootimg-partition --fstype=vfat --label bootloaderfiles_A --align 2048 --fixed-size 256M
+--
+2.25.1

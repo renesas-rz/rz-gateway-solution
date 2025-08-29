@@ -1,4 +1,4 @@
-Subject: [PATCH 12/14] Fix the busybox issue
+Subject: [PATCH 12/23] Fix the busybox issue
 
 Issue:
     RAUC busybox patch is failed due to incompatible version of busybox
@@ -6,13 +6,19 @@ Fix:
     Modified the changes manually in the current version of busybox
 
 ---
- ...e-sizelimit-and-offset-option-for-lo.patch | 68 ++++++++-----------
- 1 file changed, 25 insertions(+), 37 deletions(-)
+ ...e-sizelimit-and-offset-option-for-lo.patch | 64 ++++++++-----------
+ 1 file changed, 26 insertions(+), 38 deletions(-)
 
 diff --git a/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch b/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
-index 5d7606ef..5bd27f72 100644
+index 5d7606ef..971ee7c6 100644
 --- a/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
 +++ b/meta-rauc/recipes-core/busybox/files/0001-mount-support-the-sizelimit-and-offset-option-for-lo.patch
+@@ -1,4 +1,4 @@
+-From 43cd16d9140a3ac437d9d29d2fd0288501e88a9b Mon Sep 17 00:00:00 2001
++From 765478c0a62ee2274df2279864e65c706aeb988c Mon Sep 17 00:00:00 2001
+ From: Steffen Trumtrar <s.trumtrar@pengutronix.de>
+ Date: Wed, 29 Jul 2020 10:43:53 +0200
+ Subject: [PATCH] mount: support the sizelimit and offset option for loop
 @@ -28,66 +28,56 @@ losetup_main                                         479     483      +4
  Signed-off-by: Steffen Trumtrar <s.trumtrar@pengutronix.de>
  Signed-off-by: Denys Vlasenko <vda.linux@googlemail.com>

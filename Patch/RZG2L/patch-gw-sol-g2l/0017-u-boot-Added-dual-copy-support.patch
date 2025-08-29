@@ -1,0 +1,198 @@
+Subject: [PATCH 17/23] u-boot: Added dual copy support
+
+- CONFIG_SYS_ENV_DUAL_COPY config is created in u-boot
+- Implemented code to copy the env on both priority and redundant
+  buffers
+- u-boot copies the env from redundant buffer, if priority buffer
+  is corrupted
+- If both buffers are corrupted uses the default env.
+
+---
+ ...-Adding-dubble-buffer-to-environment.patch | 163 ++++++++++++++++++
+ .../u-boot/u-boot_2021.10.bbappend            |   1 +
+ 2 files changed, 164 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-dubble-buffer-to-environment.patch
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-dubble-buffer-to-environment.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-dubble-buffer-to-environment.patch
+new file mode 100644
+index 00000000..bcadecd0
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-dubble-buffer-to-environment.patch
+@@ -0,0 +1,163 @@
++From c6457c7a16243a8e64d5f0769ad18a8b62b781c8 Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:31:58 +0530
++Subject: [PATCH] Adding dubble buffer to environment
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ configs/smarc-rzg2l_defconfig |  3 ++
++ env/Kconfig                   |  9 ++++++
++ env/common.c                  | 15 ++++++++++
++ env/mmc.c                     | 56 +++++++++++++++++++++++++++++++++++
++ 4 files changed, 83 insertions(+)
++
++diff --git a/configs/smarc-rzg2l_defconfig b/configs/smarc-rzg2l_defconfig
++index 14273e4a8a..bb4ff68f35 100644
++--- a/configs/smarc-rzg2l_defconfig
+++++ b/configs/smarc-rzg2l_defconfig
++@@ -4,6 +4,9 @@ CONFIG_ARCH_RMOBILE=y
++ CONFIG_SYS_TEXT_BASE=0x50000000
++ CONFIG_ENV_SIZE=0x19000
++ CONFIG_ENV_OFFSET=0x110000
+++CONFIG_SYS_REDUNDAND_ENVIRONMENT=y
+++CONFIG_ENV_OFFSET_REDUND=0x129000
+++CONFIG_SYS_ENV_DUAL_COPY=y
++ CONFIG_DM_GPIO=y
++ CONFIG_RCAR_GEN3=y
++ CONFIG_R9A07G044L=y
++diff --git a/env/Kconfig b/env/Kconfig
++index c0dff1fd81..9d49b88433 100644
++--- a/env/Kconfig
+++++ b/env/Kconfig
++@@ -434,6 +434,15 @@ config SYS_REDUNDAND_ENVIRONMENT
++ 	  which is used by env import/export commands which are independent of
++ 	  storing variables to redundant location on a non volatile device.
++
+++config SYS_ENV_DUAL_COPY
+++	bool "Enable dual copy environment support"
+++	depends on SYS_REDUNDAND_ENVIRONMENT
+++	help
+++	  Normally, the environemt is stored in a single location.  By
+++	  selecting this option, when ever primary env is corrupted it will copy
+++	  from redundant copy and vice versa. When save the env, this will copy
+++	  the env to both primary and redundant buffers.
+++
++ config ENV_FAT_INTERFACE
++ 	string "Name of the block device for the environment"
++ 	depends on ENV_IS_IN_FAT
++diff --git a/env/common.c b/env/common.c
++index 81e9e0b2aa..30a8ace047 100644
++--- a/env/common.c
+++++ b/env/common.c
++@@ -167,12 +167,27 @@ int env_check_redund(const char *buf1, int buf1_read_fail,
++ 		crc2_ok = crc32(0, tmp_env2->data, ENV_SIZE) ==
++ 				tmp_env2->crc;
++
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++	tmp_env1->flags = 1;
+++	tmp_env2->flags = 0;
+++#endif
++ 	if (!crc1_ok && !crc2_ok) {
++ 		return -ENOMSG; /* needed for env_load() */
++ 	} else if (crc1_ok && !crc2_ok) {
++ 		gd->env_valid = ENV_VALID;
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++		puts("\n*** Warning - Redundant ENV is corrupted!!\n");
+++		tmp_env1->flags = 1;
+++		memcpy(tmp_env2, tmp_env1, sizeof(env_t));
+++#endif
++ 	} else if (!crc1_ok && crc2_ok) {
++ 		gd->env_valid = ENV_REDUND;
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY)
+++		puts("\n*** Warning - Priority ENV is corrupted!!\n");
+++		memcpy(tmp_env1, tmp_env2, sizeof(env_t));
+++		tmp_env2->flags = 0;
+++		gd->env_valid = ENV_VALID;
+++#endif
++ 	} else {
++ 		/* both ok - check serial */
++ 		if (tmp_env1->flags == 255 && tmp_env2->flags == 0)
++diff --git a/env/mmc.c b/env/mmc.c
++index 6fa271c377..cab2db6dc2 100644
++--- a/env/mmc.c
+++++ b/env/mmc.c
++@@ -205,6 +205,30 @@ static int env_mmc_save(void)
++ 	if (ret)
++ 		goto fini;
++
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY) && defined(CONFIG_SYS_REDUNDAND_ENVIRONMENT)
+++	/*
+++	 * This block of code make sure the updated env is copied on
+++	 * both primary and redundant env buffers
+++	 * Where, copy = 0 ---> for primary env buffer
+++	 *        copy = 1 ---> for redundant env buffer
+++	 */
+++	for (copy = 0; copy < 2; copy++) {
+++		if (mmc_get_env_addr(mmc, copy, &offset)) {
+++			ret = 1;
+++			goto fini;
+++		}
+++
+++		printf("\nWriting to %sMMC(%d) at offset 0x%x... ",
+++		        copy ? "redundant " : "", dev, offset);
+++		if (write_env(mmc, CONFIG_ENV_SIZE, offset, (u_char *)env_new)) {
+++			puts("failed\n");
+++			ret = 1;
+++			goto fini;
+++		}
+++	}
+++	ret = 0;
+++#else
+++
++ #ifdef CONFIG_ENV_OFFSET_REDUND
++ 	if (gd->env_valid == ENV_VALID)
++ 		copy = 1;
++@@ -228,6 +252,8 @@ static int env_mmc_save(void)
++ 	gd->env_valid = gd->env_valid == ENV_REDUND ? ENV_VALID : ENV_REDUND;
++ #endif
++
+++#endif
+++
++ fini:
++ 	fini_mmc_for_env(mmc);
++ 	return ret;
++@@ -330,6 +356,36 @@ static int env_mmc_load(void)
++ 	ret = env_import_redund((char *)tmp_env1, read1_fail, (char *)tmp_env2,
++ 				read2_fail, H_EXTERNAL);
++
+++#if defined(CONFIG_SYS_ENV_DUAL_COPY) && defined(CONFIG_SYS_REDUNDAND_ENVIRONMENT)
+++	/*
+++	 * In Dual copy method, used the env->flags to identify valid and corrupted
+++	 * env copy and copy the valid env to invalid env buffer.
+++	 *
+++	 * if env->flags = 0, the redundant is valid env and prority is invalid env.
+++	 * if env->flags = 1, the prority is valid env and redundant is invalid env.
+++	 */
+++	if (tmp_env1->flags == tmp_env2->flags) {
+++		switch (tmp_env1->flags) {
+++		case 0:
+++			printf("\nWriting ENV from Redundant to Priority on MMC(%d) at Offset %#x...", dev, offset1);
+++			if (write_env(mmc, CONFIG_ENV_SIZE, offset1, (u_char *)tmp_env1)) {
+++				puts("failed\n");
+++				ret = 1;
+++				goto fini;
+++			}
+++			break;
+++		case 1:
+++			printf("\nWriting ENV from Priority to Redundant on MMC(%d) at Offset %#x...", dev, offset2);
+++			if (write_env(mmc, CONFIG_ENV_SIZE, offset2, (u_char *)tmp_env2)) {
+++				puts("failed\n");
+++				ret = 1;
+++				goto fini;
+++			}
+++			break;
+++		}
+++	}
+++#endif
+++
++ fini:
++ 	fini_mmc_for_env(mmc);
++ err:
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index 4bacb66d..21573ca9 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -6,6 +6,7 @@ SRC_URI_append = " \
+ 	file://fw_env.config \
+ 	file://0001-Adding-aws-greengrass-lambda-function-bootargs.patch \
+ 	file://0001-Added-u-boot-env-to-MMC.patch \
++	file://0001-Adding-dubble-buffer-to-environment.patch \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+--
+2.25.1

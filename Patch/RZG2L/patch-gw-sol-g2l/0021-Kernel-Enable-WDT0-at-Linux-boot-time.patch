@@ -1,0 +1,100 @@
+Subject: [PATCH 21/23] Kernel: Enable WDT0 at Linux boot time
+
+- WDT0 from u-boot is stopped due to clock reset at linux
+  boot time.
+- Modified the RZG2L watchdog timer (WDT0) driver to start
+  at linux boot time (after 0.5 sec from linux kerenl start)
+- Configure timeout time of WDT0 to 150 sec to give enough
+  time window to refresh WDT0 to avoid reboot for properly
+  booted system.
+
+---
+ ...01-Start-Watchdog-timer-at-boot-time.patch | 65 +++++++++++++++++++
+ .../linux/linux-renesas_5.10.bbappend         |  2 +-
+ 2 files changed, 66 insertions(+), 1 deletion(-)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/0001-Start-Watchdog-timer-at-boot-time.patch
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/0001-Start-Watchdog-timer-at-boot-time.patch b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/0001-Start-Watchdog-timer-at-boot-time.patch
+new file mode 100644
+index 00000000..17360396
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas/0001-Start-Watchdog-timer-at-boot-time.patch
+@@ -0,0 +1,65 @@
++From 978b8f716ee20843493acdf3c3165e11daff1f20 Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:49:36 +0530
++Subject: [PATCH] Start Watchdog timer at boot time
++
++- Started Watchdog timer (wdt0)
++- Set the timeout time to 150 sec, which gives enough
++  time to watchdog service to refresh the wdt0 device.
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ arch/arm64/boot/dts/renesas/rzg2l-smarc-som.dtsi |  2 +-
++ drivers/watchdog/rzg2l_wdt.c                     | 16 +++++++++++++++-
++ 2 files changed, 16 insertions(+), 2 deletions(-)
++
++diff --git a/arch/arm64/boot/dts/renesas/rzg2l-smarc-som.dtsi b/arch/arm64/boot/dts/renesas/rzg2l-smarc-som.dtsi
++index 2349bb97225d..8262b6e2d22e 100644
++--- a/arch/arm64/boot/dts/renesas/rzg2l-smarc-som.dtsi
+++++ b/arch/arm64/boot/dts/renesas/rzg2l-smarc-som.dtsi
++@@ -422,7 +422,7 @@ &sdhi0 {
++
++ &wdt0 {
++ 	status = "okay";
++-	timeout-sec = <60>;
+++	timeout-sec = <150>;
++ };
++
++ &wdt1 {
++diff --git a/drivers/watchdog/rzg2l_wdt.c b/drivers/watchdog/rzg2l_wdt.c
++index 1f7191df218f..5f17bd95a1e4 100644
++--- a/drivers/watchdog/rzg2l_wdt.c
+++++ b/drivers/watchdog/rzg2l_wdt.c
++@@ -121,6 +121,9 @@ static void rzg2l_wdt_init_timeout(struct watchdog_device *wdev)
++ 	time_out = (wdev->timeout * (MICRO / 2)) /
++ 		   rzg2l_wdt_get_cycle_usec(priv->osc_clk_rate, 0);
++ 	rzg2l_wdt_write(priv, WDTSET_COUNTER_VAL(time_out), WDTSET);
+++
+++	dev_info(wdev->parent, "Watchdog device timeout is set to %d sec\n",
+++	         wdev->timeout);
++ }
++
++ static int rzg2l_wdt_start(struct watchdog_device *wdev)
++@@ -325,7 +328,18 @@ static int rzg2l_wdt_probe(struct platform_device *pdev)
++ 	if (ret)
++ 		dev_warn(dev, "Specified timeout invalid, using default");
++
++-	return devm_watchdog_register_device(&pdev->dev, &priv->wdev);
+++	ret = devm_watchdog_register_device(&pdev->dev, &priv->wdev);
+++	if (ret) {
+++		dev_err(dev, "Registering watchdog device is failed\n");
+++		return ret;
+++	}
+++
+++	/* Start only wdt0 device */
+++	if (priv->wdev.id == 0) {
+++		rzg2l_wdt_start(&priv->wdev);
+++	}
+++
+++	return ret;
++ }
++
++ static const struct of_device_id rzg2l_wdt_ids[] = {
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+index c0f22dd5..6dd247b7 100644
+--- a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+@@ -3,5 +3,5 @@ FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
+
+ SRC_URI_append = " \
+ 	file://aws-iot-greengrass-v2.cfg \
+-	file://wdt.patch \
++	file://0001-Start-Watchdog-timer-at-boot-time.patch \
+  "
+--
+2.25.1

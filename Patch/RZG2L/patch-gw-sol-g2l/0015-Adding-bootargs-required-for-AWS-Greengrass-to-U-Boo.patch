@@ -1,0 +1,60 @@
+Subject: [PATCH 15/23] Adding bootargs required for AWS Greengrass to U-Boot
+
+- Added aws greengrass lambda function linux kernel bootargs
+  'cgroup_enable=memory cgroup_memory=1 systemd.unified_cgroup_hierarchy=0'
+
+---
+ ...-greengrass-lambda-function-bootargs.patch | 29 +++++++++++++++++++
+ .../u-boot/u-boot_2021.10.bbappend            |  1 +
+ 2 files changed, 30 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-aws-greengrass-lambda-function-bootargs.patch
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-aws-greengrass-lambda-function-bootargs.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-aws-greengrass-lambda-function-bootargs.patch
+new file mode 100644
+index 00000000..cb826aad
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-aws-greengrass-lambda-function-bootargs.patch
+@@ -0,0 +1,29 @@
++From 45b60b342a13585f66d40a66ad974f934d459963 Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:21:48 +0530
++Subject: [PATCH] Adding aws greengrass lambda function bootargs
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ include/configs/smarc-rzg2l.h | 5 +++--
++ 1 file changed, 3 insertions(+), 2 deletions(-)
++
++diff --git a/include/configs/smarc-rzg2l.h b/include/configs/smarc-rzg2l.h
++index b6d2c8af33..d27a026ac5 100644
++--- a/include/configs/smarc-rzg2l.h
+++++ b/include/configs/smarc-rzg2l.h
++@@ -62,8 +62,9 @@
++ #define CONFIG_EXTRA_ENV_SETTINGS \
++ 	"usb_pgood_delay=2000\0" \
++ 	"bootm_size=0x10000000 \0" \
++-	"prodsdbootargs=setenv bootargs rw rootwait earlycon root=/dev/mmcblk1p2 \0" \
++-	"prodemmcbootargs=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p2 \0" \
+++	"aws_lambda_bootargs=cgroup_enable=memory cgroup_memory=1 systemd.unified_cgroup_hierarchy=0 \0" \
+++	"prodsdbootargs=setenv bootargs rw rootwait earlycon root=/dev/mmcblk1p2 ${aws_lambda_bootargs} \0" \
+++	"prodemmcbootargs=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p2 ${aws_lambda_bootargs} \0" \
++ 	"bootimage=unzip 0x4A080000 0x48080000; booti 0x48080000 - 0x48000000 \0" \
++ 	"emmcload=ext4load mmc 0:2 0x48080000 boot/Image;ext4load mmc 0:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodemmcbootargs \0" \
++ 	"sd1load=ext4load mmc 1:2 0x48080000 boot/Image;ext4load mmc 1:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodsdbootargs \0" \
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index 29335c38..897ac1bc 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -4,6 +4,7 @@ SRC_URI_append = " \
+ 	${@oe.utils.conditional("USE_ECC", "1", "file://0001-arm-dts-reserved-ECC-memory-region-for-all-RZ-G2L-Se.patch", "", d)} \
+ 	file://0001-Enable-runtime-env-configuration.patch \
+ 	file://fw_env.config \
++	file://0001-Adding-aws-greengrass-lambda-function-bootargs.patch \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+--
+2.25.1

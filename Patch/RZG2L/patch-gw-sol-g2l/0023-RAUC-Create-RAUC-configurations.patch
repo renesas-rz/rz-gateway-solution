@@ -1,0 +1,302 @@
+Subject: [PATCH 23/23] RAUC: Create RAUC configurations
+
+- Implement a recipe to generate RAUC Manifest file for
+  rauc bundle creation
+- Create RAUC system.conf file for FOTA update on RZG2L device.
+
+---
+ .../bundles/core-image-bsp-bundle.bb          | 57 +++++++++++++++++++
+ .../bundles/files/post_install.sh             | 26 +++++++++
+ meta-rauc/recipes-core/rauc/files/ca.cert.pem | 57 ++++++++++---------
+ meta-rauc/recipes-core/rauc/files/ca.key.pem  | 52 +++++++++++++++++
+ meta-rauc/recipes-core/rauc/files/system.conf | 48 ++++++++++++++--
+ 5 files changed, 207 insertions(+), 33 deletions(-)
+ create mode 100644 meta-rauc/recipes-core/bundles/core-image-bsp-bundle.bb
+ create mode 100644 meta-rauc/recipes-core/bundles/files/post_install.sh
+ create mode 100644 meta-rauc/recipes-core/rauc/files/ca.key.pem
+
+diff --git a/meta-rauc/recipes-core/bundles/core-image-bsp-bundle.bb b/meta-rauc/recipes-core/bundles/core-image-bsp-bundle.bb
+new file mode 100644
+index 00000000..982cdf64
+--- /dev/null
++++ b/meta-rauc/recipes-core/bundles/core-image-bsp-bundle.bb
+@@ -0,0 +1,57 @@
++# A demo bundle for RZG2L EVK
++#
++# Note: The created bundle will not contain RAUC itself yet!
++# To add this, properly configure it for your specific system and add it to
++# your image recipe you intend to build a bundle from:
++#
++# IMAGE_INSTALL_append = " rauc"
++#
++# Also note that you need to configure RAUC_KEY_FILE and RAUC_CERT_FILE to
++# point to contain the full path to your key and cert.
++# Depending on you requirements you can either set them via global
++# configuration or from a bundle recipe bbappend.
++#
++# For testing purpose, you may use the scripts/openssl-ca.sh to create some.
++
++PROVIDES = "core-image-bsp-bundle"
++
++inherit bundle
++
++LICENSE = "MIT"
++LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
++
++RAUC_BUNDLE_COMPATIBLE ?= "smarc-rzg2l-ota-update-demo"
++RAUC_BUNDLE_VERSION ?= "v1.0.0"
++
++SRC_URI += " file://post_install.sh"
++RAUC_BUNDLE_HOOKS[file] = "post_install.sh"
++
++RAUC_BUNDLE_SLOTS ?= "kernel dtb rootfs"
++
++RAUC_SLOT_kernel ?= "linux-renesas"
++RAUC_SLOT_kernel[type] ?= "file"
++RAUC_SLOT_kernel[file] ?= "Image-${MACHINE}.bin"
++RAUC_SLOT_kernel[hooks] ?= "post-install"
++
++RAUC_SLOT_dtb ?= "linux-renesas"
++RAUC_SLOT_dtb[type] ?= "file"
++RAUC_SLOT_dtb[file] ?= "r9a07g044l2-smarc-${MACHINE}.dtb"
++RAUC_SLOT_dtb[hooks] ?= "post-install"
++
++# RAUC_SLOT_bootimg ?= "bootimg-partition"
++# RAUC_SLOT_bootimg[fstype] = "vfat"
++# RAUC_SLOT_bootimg[hooks] ?= "post-install"
++
++RAUC_SLOT_rootfs ?= "core-image-bsp"
++RAUC_SLOT_rootfs[fstype] = "ext4"
++RAUC_SLOT_rootfs[hooks] ?= "post-install"
++
++# Enable building verity format bundles with
++RAUC_BUNDLE_FORMAT = "verity"
++
++# Additionally you need to provide a certificate and a key file
++RAUC_KEY_FILE = "${COREBASE}/../meta-rauc/recipes-core/rauc/files/ca.key.pem"
++RAUC_CERT_FILE = "${COREBASE}/../meta-rauc/recipes-core/rauc/files/ca.cert.pem"
++
++# For bundle signature verification a keyring file must be provided
++RAUC_KEYRING_FILE ?= "${COREBASE}/../meta-rauc/recipes-core/rauc/files/ca.cert.pem"
+diff --git a/meta-rauc/recipes-core/bundles/files/post_install.sh b/meta-rauc/recipes-core/bundles/files/post_install.sh
+new file mode 100644
+index 00000000..875e1953
+--- /dev/null
++++ b/meta-rauc/recipes-core/bundles/files/post_install.sh
+@@ -0,0 +1,26 @@
++#!/bin/sh
++
++case "$1" in
++        slot-post-install)
++                # only rootfs needs to be handled
++                #test "$RAUC_SLOT_CLASS" = "rootfs" || exit 0
++                if [ "$RAUC_SLOT_CLASS" = "rootfs" ];then
++			echo "Running post installation script for rootfs slot"
++			echo "Running post installation script for rootfs slot" > /rootfs_ps
++		fi
++                if [ "$RAUC_SLOT_CLASS" = "kernel" ];then
++			echo "Running post installation script for kernel slot"
++			echo "Running post installation script for kernel slot" > /kernel_ps
++		fi
++                if [ "$RAUC_SLOT_CLASS" = "dtb" ];then
++			echo "Running post installation script for dtb slot"
++			echo "Running post installation script for dtb slot" > /dtb_ps
++		fi
++
++                ;;
++        *)
++                exit 1
++                ;;
++esac
++
++exit 0
+diff --git a/meta-rauc/recipes-core/rauc/files/ca.cert.pem b/meta-rauc/recipes-core/rauc/files/ca.cert.pem
+index 5b6680c4..b4e5851c 100644
+--- a/meta-rauc/recipes-core/rauc/files/ca.cert.pem
++++ b/meta-rauc/recipes-core/rauc/files/ca.cert.pem
+@@ -1,30 +1,31 @@
+ -----BEGIN CERTIFICATE-----
+-MIIFMTCCAxmgAwIBAgIUPIHiCv9peNYasMWt89CJKcnpTzowDQYJKoZIhvcNAQEL
+-BQAwKDESMBAGA1UECgwJcmF1YyBJbmMuMRIwEAYDVQQDDAlyYXVjLWRlbW8wHhcN
+-MjUwMzAzMTIxNDE3WhcNMjUwNDAyMTIxNDE3WjAoMRIwEAYDVQQKDAlyYXVjIElu
+-Yy4xEjAQBgNVBAMMCXJhdWMtZGVtbzCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC
+-AgoCggIBAMdM0hg5TDLdfcqc0zlwo3qJWS3Yv5/Eiu/6Ext5SxzEZzrG7WFZehlG
+-0DpwY+bDpCzyKAArxHO+nP3FoTj1U2GyJQWh7Ng56Brm8cgQNm6zz2G6qqst0s4C
+-mfw3lvAO9IHFk+mqE/wut/ys+JdOZYFFj1w1fElQhHmsbQBtOvCibY+tVhbQoQ7e
+-Dwj0I2XB9UdQqoQLlYMEDVrxMQZVc5tXAYw7EXGgHBJuuq4/sCZljUqfrthAkyRJ
+-drbNmHqeWEEvzZ+nk0l9bnNfMPgbA4iwwsKUeGAfd1Es6nWAE+n3vYHRhn+viwvE
+-HcrYGWvnZWdbpD+GizAY7o9TTxrKYhmdjbhOUTY5pt95TkAXKuUwyb8rNZlsu1JG
+-aR9clBtrMDqTJoECXsL8Rh37k0fKRvQM1tIFAc0nVWiWQfmSGZ2kPH9TtXbWaItY
+-9aQZbwQjvCLiq0ZsXeMgMORi0F4CzXL19vBX8LuFV3hLLg9v5GwD70TIAtHA0VkO
+-NOg0ymzuPSjqDreveGIiEZS5laDHjK3ubeawjlXk9sNECvcguiBo7M2Tb9odsKJ1
+-k7qnMb3ilNMOUBjHm8+4YVsffeEv8Y7Q8Ibaw+8GAhVk7SSuaAxnAaepRENuMkhL
+-rwZApmvCg7wERcxlIgUhyGOf/92YpkwlClaUcAzLT2tvp9abzqglAgMBAAGjUzBR
+-MB0GA1UdDgQWBBS/quUKSg8Oxt0gjTdbye5+rirK2jAfBgNVHSMEGDAWgBS/quUK
+-Sg8Oxt0gjTdbye5+rirK2jAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
+-A4ICAQAv9G1moe/m5c3/9z+VYJRSOBVXG3trMBHWldFAUxVPk+kzf6mjkAhGhU6t
+-pQ7MJpaiL5B2Ykv0HtALQfer9BTqz1bO747+h/dDU3ncEG0gZJHH9zi5k3r7Pdy7
+-9lutaGhdIuwjD++7fT8RPQ51oEy2x+gkeWybcpugrFLLrJf+98diLHlMbPugYMo4
+-8fOZuSv+R6Sxz1Qsxr1Q8WXWHYK2kYt04aj+9fytPULLgVqZ/Ias+QUD4NN9UlI9
+-pOhm4D/mZaGd7ajowgqkhvwPjqZDSNKp/2oZFUqbzcP5yxIyYNdk997+S61fo9KH
+-/TDRSn7/Pi7PDTqKMmxFzxom8kEFJMh7Fk3eOfhVXH1WVH6sBlDKruuggJOZpWF2
+-UUZRy0SCl2tJPESKlv4lMalAdlOydtCvE4qmaw3wkhgm7vDkYWyk7ZkfdwExzvM3
+-do/0seCvrowyLUXAfQ8Drgv6FvFzqoAW44USmYroBsfvrISDFzERJuxuaN40pIgz
+-9zfIq87dhyaIH1/fEASD7Af5+9ScGVUcGST5X9QqvvBEGK4L9y8BlJUM3f0WAtUp
+-Ldqat5f0d0NRW8LYmWhm84repFar0D2kiyKujY+R2srw1bBMcJpai/1scNZzgZJY
+-XuJAtrObFZodVgJ1NzCvc3ZMJdeAVp2dl6WUq395gYA8uTliUw==
++MIIFSTCCAzGgAwIBAgIUCW4qi/zVaikjbdxTaxgJM4yAIMUwDQYJKoZIhvcNAQEL
++BQAwNDEWMBQGA1UECgwNUmVuZXNhcyBpbmMuIDEaMBgGA1UEAwwRUlpHMkwgRk9U
++QSBVcGRhdGUwHhcNMjUwNzI2MTEwMTUwWhcNMjYwNzI2MTEwMTUwWjA0MRYwFAYD
++VQQKDA1SZW5lc2FzIGluYy4gMRowGAYDVQQDDBFSWkcyTCBGT1RBIFVwZGF0ZTCC
++AiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAPB3zUDxWTkIGwBbcLWlKE10
++oPxS6fcMTHU/Jmk4+BtuROZue17YmEcO4lVphqhNK+hRgxqtS9SZRmxvV8zn4/5x
++8H6fy4kr1PVIho08/LPRNuBLAaHF9MF1GdlH4xlrhAe7c3vviGNlmmHb3I3q9fY2
++K1RECP3Y8qxt0VgTVHcXeUTQCUzEDgkMlC39zB2Mgj2ROtFqCPa6tDhkXmXqroie
++TFjuXKhtqwQtu2v6cLs2HadLi2UMvUKWFsQhUsrOiCeyMFx5aPLj5W8RUg7F5Afn
++OgXPE3QRpxBTAV9ibUTz8jJyWEJZ3qEntlOPBsYDeZsHRvuP1yK6bQ/byjVWeFWU
++93iFlqHNY52IA59mmI6JnbgFwSPqsqZMhAEC3lRFthEuRMfIHDkF2svaFudEDjfE
++d7nW/XamyIT45ShLq8wJVnI71FdHE61Qn8P4UeChVaCXOSW1uCoPJxgsdfWagLF6
++tsFZhdQi35o4jIJFSpisyjINoeAQhxUTf2bitUOvNnlHnkKm10BBurB4VYGy1JYz
++GmdFOPTcVGQTa6K9jlVEpFkqoaL9G8r5PvYC7VpFe0WVP7+fFad2IMf7L/nGkHWu
++W4XJEPaSMWxj9qzsAnmDiGR+KCQbW3tc0Mc9GivhmHI4lRqiHgzMH08WzXuvrdo+
++qp9FE9H9T2HwkE0u5A4FAgMBAAGjUzBRMB0GA1UdDgQWBBRMlwRdHOwYiiOeYrOH
++VPuNmKRJtjAfBgNVHSMEGDAWgBRMlwRdHOwYiiOeYrOHVPuNmKRJtjAPBgNVHRMB
++Af8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4ICAQDURquxP3QVD1rJ9tUkmhEqIFgL
++RlcWBDNrkGvGg+lC/KmJf0TQTlOWmH6b/BDORmzlcD85pZm42N/YOAvQ+qzkL3dZ
++NbpeKBOIiCtKNFiq9EhN+noJpDfl1xsW62MCmTvpp/zHX46cAlRT46KM8eP0/vdE
++cq1LdZrXmPDg8YzDhtLg8/ZtJ6Tw+XQ7Hv7pQ5Ky435GDUII3iJTufnFedN/A31v
++6zKR05uG28/WcNtZbyAso5HBdowImUnZCuO46GweHO3s24SxlLmoUqUbmzAizc60
++xBOTWebIMlry0+emNR403Hd0yUjuLMK0GwMwCvuJvY84LAocnSXdgxKZDDv4Uaml
++BpJB3bOJg8MCK3hK3SprTM+1mMK4P/DTqVCRPphS0vxOY1bakjKU5rkCNTL6sE48
++Ngp+WjZH472W5QrSzrX/zjounRxyV0hDqS57anOiKwKqQ+g4/tN7PudKrhvWdcjO
++NNw+e5pcf5zI9M2vVs1b6HSjmRhdgef7kZdwQc80c4ChKvm+eTt3KAW199Hy/rwJ
++rpdNCM3WmxEAip+Rwix8eGQxoq5sKE2eMTZ1hxDve28wj73LWGUA7WZkCgeV5bzL
++kA4+3N+tJLBvy5JehYTc0Y0uN6BQefmvAfv4Q6qCJZzRzlOUfX1W2V+Y75dyt+jW
++2iT8N8lfnpM/D5wXGg==
+ -----END CERTIFICATE-----
+diff --git a/meta-rauc/recipes-core/rauc/files/ca.key.pem b/meta-rauc/recipes-core/rauc/files/ca.key.pem
+new file mode 100644
+index 00000000..04a947d1
+--- /dev/null
++++ b/meta-rauc/recipes-core/rauc/files/ca.key.pem
+@@ -0,0 +1,52 @@
++-----BEGIN PRIVATE KEY-----
++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
++ojEtgDVQvZ5eStUZTwNqLHasQbU3YQ==
++-----END PRIVATE KEY-----
+diff --git a/meta-rauc/recipes-core/rauc/files/system.conf b/meta-rauc/recipes-core/rauc/files/system.conf
+index 2c12aa91..d7b11eb2 100644
+--- a/meta-rauc/recipes-core/rauc/files/system.conf
++++ b/meta-rauc/recipes-core/rauc/files/system.conf
+@@ -36,18 +36,56 @@
+ # device=/dev/mmcblkXp4
+ # type=ext4
+ # parent=rootfs.1
++
+ [system]
+-compatible=rauc-demo-x86
++compatible=smarc-rzg2l-ota-update-demo
+ bootloader=uboot
+-bundle-formats=-plain
+ data-directory=/tmp/rauc
++bundle-formats=-plain
++boot-attempts=3
++#boot-attempts-primary=1
++#activate-installed=true
++
++
+ [keyring]
+-path=demo.cert.pem
++path=/etc/rauc/ca.cert.pem
++
++[slot.kernel.0]
++device=/dev/mmcblk0p3
++type=raw
++parent=rootfs.0
++
++[slot.kernel.1]
++device=/dev/mmcblk0p6
++type=raw
++parent=rootfs.1
++
++[slot.dtb.0]
++device=/dev/mmcblk0p5
++type=raw
++parent=rootfs.0
++
++[slot.dtb.1]
++device=/dev/mmcblk0p7
++type=raw
++parent=rootfs.1
++
++#[slot.bootimg.0]
++#device=/dev/mmcblk0p8
++#type=vfat
++#bootname=A
++
++#[slot.bootimg.1]
++#device=/dev/mmcblk0p10
++#type=vfat
++#bootname=B
++
+ [slot.rootfs.0]
+-device=/dev/nvme0n1p1
++device=/dev/mmcblk0p9
+ type=ext4
+ bootname=A
++
+ [slot.rootfs.1]
+-device=/ dev/nvme0n1p2
++device=/dev/mmcblk0p11
+ type=ext4
+ bootname=B
+--
+2.25.1

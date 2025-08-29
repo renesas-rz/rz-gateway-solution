@@ -1,4 +1,4 @@
-Subject: [PATCH 14/14] Enable openssh for IDT tool connectivity
+Subject: [PATCH 14/23] Enable openssh for IDT tool connectivity
 
 - Disabled dropbear ssh server
 - Enabled openssh server

@@ -1,0 +1,100 @@
+Subject: [PATCH 22/23] u-boot: Adding env required for rauc
+
+- Sets below env in u-boot
+  * BOOT_ORDER="A B"
+  * BOOT_A_LEFT=3
+  * BOOT_B_LEFT=3
+- Sets env script to find valid slot for boot.
+
+---
+ ...dding-env-variable-required-for-rauc.patch | 66 +++++++++++++++++++
+ .../u-boot/u-boot_2021.10.bbappend            |  1 +
+ 2 files changed, 67 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-env-variable-required-for-rauc.patch
+
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-env-variable-required-for-rauc.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-env-variable-required-for-rauc.patch
+new file mode 100644
+index 00000000..3e6676da
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-env-variable-required-for-rauc.patch
+@@ -0,0 +1,66 @@
++From 2bcd57f91a723087493ccfe4ac931056c4a0c27f Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:52:58 +0530
++Subject: [PATCH] Adding env variable required for rauc
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ include/configs/smarc-rzg2l.h | 40 +++++++++++++++++++++--------------
++ 1 file changed, 24 insertions(+), 16 deletions(-)
++
++diff --git a/include/configs/smarc-rzg2l.h b/include/configs/smarc-rzg2l.h
++index be2c9d0510..97a2ec3b01 100644
++--- a/include/configs/smarc-rzg2l.h
+++++ b/include/configs/smarc-rzg2l.h
++@@ -69,24 +69,32 @@
++ 	"emmcload=ext4load mmc 0:2 0x48080000 boot/Image;ext4load mmc 0:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodemmcbootargs \0" \
++ 	"sd1load=ext4load mmc 1:2 0x48080000 boot/Image;ext4load mmc 1:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodsdbootargs \0" \
++ 	"bootcmd_check=if mmc dev 1; then run sd1load; else run emmcload; fi \0" \
++-	"emmc_dtb_blk_a=0x19A18 \0" \
++-	"emmc_dtb_blk_b=0x32AF0 \0" \
+++	"bootimg=booti 0x48080000 - 0x48000000 \0" \
+++	"sd_dtb_blk_a=0x19A18 \0" \
+++	"sd_dtb_blk_b=0x32AF0 \0" \
++ 	"dtb_blk_cnt=0xc8 \0" \
++-	"emmcload_dtb_a=mmc read 0x48000000 ${emmc_dtb_blk_a} ${dtb_blk_cnt} \0" \
++-	"emmcload_dtb_b=mmc read 0x48000000 ${emmc_dtb_blk_b} ${dtb_blk_cnt} \0" \
++-	"emmc_kernel_blk_a=0xA10 \0" \
++-	"emmc_kernel_blk_b=0x19AE8 \0" \
+++	"sdload_dtb_a=mmc read 0x48000000 ${sd_dtb_blk_a} ${dtb_blk_cnt} \0" \
+++	"sdload_dtb_b=mmc read 0x48000000 ${sd_dtb_blk_b} ${dtb_blk_cnt} \0" \
+++	"sd_kernel_blk_a=0xA10 \0" \
+++	"sd_kernel_blk_b=0x19AE8 \0" \
++ 	"kernel_blk_cnt=0xA000 \0" \
++-	"emmcload_kernel_a=mmc read 0x48080000 ${emmc_kernel_blk_a} ${kernel_blk_cnt} \0" \
++-	"emmcload_kernel_b=mmc read 0x48080000 ${emmc_kernel_blk_b} ${kernel_blk_cnt} \0" \
++-	"bootargs_a=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p9 \0" \
++-	"bootargs_b=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p11 \0" \
++-	"emmcload_a=run emmcload_kernel_a; run emmcload_dtb_a; run bootargs_a \0" \
++-	"emmcload_b=run emmcload_kernel_b; run emmcload_dtb_b; run bootargs_b \0" \
++-	"boot_from_emmc=if test x${BOOT_SLOT} = xA;then run emmcload_a && echo Boot from eMMC Part-A; elif test x${BOOT_SLOT} = xB;then run emmcload_b && echo Boot from eMMC Part-B; else echo Error: Invalid BOOT_SLOT Value: ${BOOT_SLOT}; fi \0" \
++-	"BOOT_SLOT=A \0"
++-
++-#define CONFIG_BOOTCOMMAND	"run boot_from_emmc; run bootimage"
+++	"sdload_kernel_a=mmc read 0x48080000 ${sd_kernel_blk_a} ${kernel_blk_cnt} \0" \
+++	"sdload_kernel_b=mmc read 0x48080000 ${sd_kernel_blk_b} ${kernel_blk_cnt} \0" \
+++	"default_bootargs=earlycon rw rootwait ${aws_lambda_bootargs} \0" \
+++	"bootargs_a=setenv bootargs ${default_bootargs} root=/dev/mmcblk0p9 rauc.slot=A \0" \
+++	"bootargs_b=setenv bootargs ${default_bootargs} root=/dev/mmcblk0p11 rauc.slot=B \0" \
+++	"sdload_a=run sdload_kernel_a; run sdload_dtb_a; run bootargs_a \0" \
+++	"sdload_b=run sdload_kernel_b; run sdload_dtb_b; run bootargs_b \0" \
+++	"stop_wdt=wdt dev watchdog@12800800; wdt stop \0" \
+++	"BOOT_ORDER=A B \0" \
+++	"BOOT_A_LEFT=3 \0" \
+++	"BOOT_B_LEFT=3 \0" \
+++	"decrement_boot_fail_cnt_a=setexpr BOOT_A_LEFT ${BOOT_A_LEFT} - 1 \0" \
+++	"decrement_boot_fail_cnt_b=setexpr BOOT_B_LEFT ${BOOT_B_LEFT} - 1 \0" \
+++	"find_sd_slot_and_load=setenv bootargs; for BOOT_SLOT in ${BOOT_ORDER}; do if test \"x${bootargs}\" = \"x\";then run boot_from_sd; fi; done \0" \
+++	"boot_from_sd=if test \"x${BOOT_SLOT}\" = \"xA\";then if test 0x${BOOT_A_LEFT} -gt 0;then run decrement_boot_fail_cnt_a; saveenv; run sdload_a && boot_rdy=1 && echo Boot from SD SLOT-A; elif test 0x${BOOT_B_LEFT} -gt 0;then setenv BOOT_ORDER \"B A\"; echo Warning: Changed the BOOT_ORDER to: ${BOOT_ORDER}; saveenv; reset; else setenv bootargs ${default_bootargs}; boot_rdy=0 && echo ERROR: Failed to boot from SLOT-A and SLOT-B !!; echo Update Manually !; fi; elif test \"x${BOOT_SLOT}\" = \"xB\";then if test 0x${BOOT_B_LEFT} -gt 0;then run decrement_boot_fail_cnt_b; saveenv; run sdload_b && boot_rdy=1 && echo Boot from SD SLOT-B; elif test 0x${BOOT_A_LEFT} -gt 0;then setenv BOOT_ORDER \"A B\"; echo Warning: Changed the BOOT_ORDER to: ${BOOT_ORDER}; saveenv; reset; else setenv bootargs ${default_bootargs}; boot_rdy=0 && echo ERROR: Failed to boot from SLOT-B and SLOT-A !!; echo Update Manually !; fi; else echo Error: Invalid BOOT_SLOT Value: ${BOOT_SLOT}; echo Set BOOT_ORDER value properly; fi \0"
+++
+++#define CONFIG_BOOTCOMMAND	"run stop_wdt; run find_sd_slot_and_load; if test ${boot_rdy} -eq 1;then run bootimg; fi"
++
++ /* For board */
++ /* Ethernet RAVB */
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index be13d716..904f589e 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -9,6 +9,7 @@ SRC_URI_append = " \
+ 	file://0001-Adding-dubble-buffer-to-environment.patch \
+ 	file://0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch \
+ 	file://0001-Adding-default-environment-variables.patch \
++	file://0001-Adding-env-variable-required-for-rauc.patch \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+--
+2.25.1

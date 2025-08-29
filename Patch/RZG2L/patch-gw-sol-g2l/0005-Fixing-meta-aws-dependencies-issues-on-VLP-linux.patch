@@ -1,4 +1,4 @@
-Subject: [PATCH 05/14] Fixing meta-aws dependencies issues on VLP linux
+Subject: [PATCH 05/23] Fixing meta-aws dependencies issues on VLP linux
 
 Issue:
 Few meta-aws recipes unable to find dependencies

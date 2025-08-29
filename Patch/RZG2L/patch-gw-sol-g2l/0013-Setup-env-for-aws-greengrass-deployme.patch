@@ -1,4 +1,4 @@
-Subject: [PATCH 13/14] Setup env for aws greengrass deployment
+Subject: [PATCH 13/23] Setup env for aws greengrass deployment
 
 - AWS greengrass required pip tool to deploy aws greengrass components
 - Created ggc_user home directory to install required packages dynamically.

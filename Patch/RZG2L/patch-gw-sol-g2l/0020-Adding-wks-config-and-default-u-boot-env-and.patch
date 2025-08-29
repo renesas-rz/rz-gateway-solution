@@ -1,0 +1,145 @@
+Subject: [PATCH 20/23] Adding wks config and default u-boot env and
+
+- Added default u-boot env to boot from BOOT_SLOT=A or
+  BOOT_SLOT=B.
+- Added wks config file to store firmware components to
+  new address locations of SD cars.
+
+---
+ .../rz-image-bootpart-esd-pmic-ota-update.wks | 39 ++++++++++-----
+ ...Adding-default-environment-variables.patch | 48 +++++++++++++++++++
+ .../u-boot/u-boot_2021.10.bbappend            |  1 +
+ .../linux/linux-renesas_5.10.bbappend         |  1 +
+ 4 files changed, 77 insertions(+), 12 deletions(-)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-default-environment-variables.patch
+
+diff --git a/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+index e31c5317..a8e2bbfe 100644
+--- a/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
++++ b/meta-renesas/meta-rz-common/wic/rz-image-bootpart-esd-pmic-ota-update.wks
+@@ -6,20 +6,35 @@
+ #                   Note: for eSD boot, SD card must be mmc0. If not use eSD boot mode, on the boards
+ #                         with multiple SD card slots, SD card can be either mmc0 or mmc1.
+
+-# start_offset=0x200,  end_offset=0xFFF, size=512
++#------------------------------------
++# start_offset=0x200, size=512
+ part --source rawcopy --sourceparams="file=bl2_bp_esd-${MACHINE}_pmic.bin" --no-table
+-# start_offset=0x1000, end_offset=0xFFFF, size=60K
++# start_offset=0x1000, size=60K
+ part --source rawcopy --sourceparams="file=bl2-${MACHINE}_pmic.bin" --no-table --align 4
+-# start_offset=0x10000, end_offset=0x10FFFF, size=1M
++# start_offset=0x10000, size=1M
+ part --source rawcopy --sourceparams="file=fip-${MACHINE}_pmic.bin" --no-table  --align 64
+-# start_offset=0x110000, end_offset=0x187FFF, size=480K, Default env image
+-part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --no-table  --align 1088
+-# start_offset=0x188000, end_offset=0x1FFFFF, size=480K, Default env image
+-part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --no-table  --align 1568
+-
+-# Partitions for bootloader and Rootfs
+-part --source bootimg-partition --fstype=vfat --label bootloaderfiles_A --align 2048 --fixed-size 256M
+-part --source rootfs            --fstype=ext4 --label root_A           --align 4 --size 2G
++#------------------------------------
++# start_offset=0x110000, size=100K, Linux Partition: /dev/mmcblk0p1, Priority Default env image
++part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --align 1088 --fixed-size 100K
++# start_offset=0x129000, size=100K, Linux Partition: /dev/mmcblk0p2, Redundant Default env image
++part --source rawcopy --sourceparams="file=u-boot-env-default-${MACHINE}.bin" --align 1188 --fixed-size 100K
++#------------------------------------
++# start_offset=0x142000, size=50M, Linux Partition: /dev/mmcblk0p3, Linux Kernel Image from Partition-A
++part --source rawcopy --sourceparams="file=Image-${MACHINE}.bin" --align 4 --fixed-size 50M
++# start_offset=0x3343000, size=100K, Linux Partition: /dev/mmcblk0p5, DTB binary from Partition-A
++part --source rawcopy --sourceparams="file=r9a07g044l2-smarc-${MACHINE}.dtb" --align 4 --fixed-size 100K
++# start_offset=0x335D000, size=50M, Linux Partition: /dev/mmcblk0p6, Linux Kernel Image from Partition-B
++part --source rawcopy --sourceparams="file=Image-${MACHINE}.bin" --align 4 --fixed-size 50M
++# start_offset=0x655E000, size=100K, Linux Partition: /dev/mmcblk0p7, DTB binary from Partition-A
++part --source rawcopy --sourceparams="file=r9a07g044l2-smarc-${MACHINE}.dtb" --align 4 --fixed-size 100K
++#------------------------------------
++# Linux Partition: /dev/mmcblk0p8, Bootloader files A Partition
++part --source bootimg-partition --fstype=vfat --label bootloaderfiles_A --align 4 --fixed-size 256M
++# Linux Partition: /dev/mmcblk0p9, Rootfs A Partition
++part --source rootfs            --fstype=ext4 --label rootfs_A           --align 4 --size 2G
++# Linux Partition: /dev/mmcblk0p10, Bootloader files A Partition
+ part --source bootimg-partition --fstype=vfat --label bootloaderfiles_B --align 4 --fixed-size 256M
+-part --source rootfs            --fstype=ext4 --label root_B            --align 4 --size 2G
++# Linux Partition: /dev/mmcblk0p11, Rootfs A Partition
++part --source rootfs            --fstype=ext4 --label rootfs_B            --align 4 --size 2G
++
+ #part /userdata --fstype=ext4 --label userdata --align 4 --size 1G
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-default-environment-variables.patch b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-default-environment-variables.patch
+new file mode 100644
+index 00000000..0ae23427
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot/0001-Adding-default-environment-variables.patch
+@@ -0,0 +1,48 @@
++From a16d0f5abf32375aba6b99d5c606a85f32710137 Mon Sep 17 00:00:00 2001
++From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++Date: Mon, 21 Jul 2025 22:43:13 +0530
++Subject: [PATCH] Adding default environment variables
++
++- Added default env to boot from newly created partitions.
++
++Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
++---
++ include/configs/smarc-rzg2l.h | 22 +++++++++++++++++++---
++ 1 file changed, 19 insertions(+), 3 deletions(-)
++
++diff --git a/include/configs/smarc-rzg2l.h b/include/configs/smarc-rzg2l.h
++index d27a026ac5..be2c9d0510 100644
++--- a/include/configs/smarc-rzg2l.h
+++++ b/include/configs/smarc-rzg2l.h
++@@ -68,9 +68,25 @@
++ 	"bootimage=unzip 0x4A080000 0x48080000; booti 0x48080000 - 0x48000000 \0" \
++ 	"emmcload=ext4load mmc 0:2 0x48080000 boot/Image;ext4load mmc 0:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodemmcbootargs \0" \
++ 	"sd1load=ext4load mmc 1:2 0x48080000 boot/Image;ext4load mmc 1:2 0x48000000 boot/r9a07g044l2-smarc.dtb;run prodsdbootargs \0" \
++-	"bootcmd_check=if mmc dev 1; then run sd1load; else run emmcload; fi \0"
++-
++-#define CONFIG_BOOTCOMMAND	"env default -a;run bootcmd_check;run bootimage"
+++	"bootcmd_check=if mmc dev 1; then run sd1load; else run emmcload; fi \0" \
+++	"emmc_dtb_blk_a=0x19A18 \0" \
+++	"emmc_dtb_blk_b=0x32AF0 \0" \
+++	"dtb_blk_cnt=0xc8 \0" \
+++	"emmcload_dtb_a=mmc read 0x48000000 ${emmc_dtb_blk_a} ${dtb_blk_cnt} \0" \
+++	"emmcload_dtb_b=mmc read 0x48000000 ${emmc_dtb_blk_b} ${dtb_blk_cnt} \0" \
+++	"emmc_kernel_blk_a=0xA10 \0" \
+++	"emmc_kernel_blk_b=0x19AE8 \0" \
+++	"kernel_blk_cnt=0xA000 \0" \
+++	"emmcload_kernel_a=mmc read 0x48080000 ${emmc_kernel_blk_a} ${kernel_blk_cnt} \0" \
+++	"emmcload_kernel_b=mmc read 0x48080000 ${emmc_kernel_blk_b} ${kernel_blk_cnt} \0" \
+++	"bootargs_a=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p9 \0" \
+++	"bootargs_b=setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p11 \0" \
+++	"emmcload_a=run emmcload_kernel_a; run emmcload_dtb_a; run bootargs_a \0" \
+++	"emmcload_b=run emmcload_kernel_b; run emmcload_dtb_b; run bootargs_b \0" \
+++	"boot_from_emmc=if test x${BOOT_SLOT} = xA;then run emmcload_a && echo Boot from eMMC Part-A; elif test x${BOOT_SLOT} = xB;then run emmcload_b && echo Boot from eMMC Part-B; else echo Error: Invalid BOOT_SLOT Value: ${BOOT_SLOT}; fi \0" \
+++	"BOOT_SLOT=A \0"
+++
+++#define CONFIG_BOOTCOMMAND	"run boot_from_emmc; run bootimage"
++
++ /* For board */
++ /* Ethernet RAVB */
++--
++2.25.1
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+index 1a0f77ce..be13d716 100644
+--- a/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-bsp/u-boot/u-boot_2021.10.bbappend
+@@ -8,6 +8,7 @@ SRC_URI_append = " \
+ 	file://0001-Added-u-boot-env-to-MMC.patch \
+ 	file://0001-Adding-dubble-buffer-to-environment.patch \
+ 	file://0001-Added-dual-copy-to-u-boot-fw_printenv-and-fw_setenv.patch \
++	file://0001-Adding-default-environment-variables.patch \
+ "
+
+ UBOOT_SREC_SUFFIX = "srec"
+diff --git a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+index e0d600d7..c0f22dd5 100644
+--- a/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
++++ b/meta-renesas/meta-rzg2l/recipes-kernel/linux/linux-renesas_5.10.bbappend
+@@ -3,4 +3,5 @@ FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
+
+ SRC_URI_append = " \
+ 	file://aws-iot-greengrass-v2.cfg \
++	file://wdt.patch \
+  "
+--
+2.25.1
