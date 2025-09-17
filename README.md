@@ -17,4 +17,4 @@ Demo samples are also available:
 
 To build the Linux environment and run the demo samples please follow the instructions from the following Getting Started Guide.
 
-URL: **[https://renesas-wiki.atlassian.net/wiki/spaces/REN/pages/1018405/RZ+Gateway+Solution+-+Getting+Started+Guide](https://github.com/renesas-rz/rz-gateway-solution/edit/main/README.md)** \
+URL: **(https://renesas-wiki.atlassian.net/wiki/spaces/REN/pages/1018405/RZ+Gateway+Solution+-+Getting+Started+Guide)** \
