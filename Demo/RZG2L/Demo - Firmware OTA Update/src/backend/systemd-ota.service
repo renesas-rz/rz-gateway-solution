@@ -1,0 +1,16 @@
+[Unit]
+Description=FOTA Central Server (FastAPI)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/src/backend/backend
+ExecStart=/usr/bin/env python3 /home/ubuntu/src/backend/backend/main.py
+Restart=always
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/etc/ota-backend.env
+
+[Install]
+WantedBy=multi-user.target

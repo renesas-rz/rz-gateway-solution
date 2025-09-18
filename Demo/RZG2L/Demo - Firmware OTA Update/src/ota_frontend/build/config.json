@@ -1,0 +1,4 @@
+{
+"OTA_SERVER_IP": "http://192.168.1.100:8001",
+"ENV": "production"
+}

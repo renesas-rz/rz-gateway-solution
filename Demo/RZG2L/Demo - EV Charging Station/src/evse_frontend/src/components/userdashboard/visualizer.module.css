@@ -1,0 +1,16 @@
+.Visualizer {}
+
+.parent {
+    background: red;
+    position: relative;
+    height: 130px;
+    width: 130px;
+}
+.child {
+    background: green;
+    height: 30px;
+    width: 30px;
+    position: absolute;
+    top: 0;
+    left: 0;
+ }

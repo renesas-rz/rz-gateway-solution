@@ -1,0 +1,535 @@
+---
+- name: Provision EC2 Instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    key_name: ocpp-server-key
+    instance_type: t3.small
+    instance_name: ocpp-server
+    sec_group: ocpp-sg
+    lambda_function_name: OcppChargingLambda
+    lambda_zip_file: ../../charging_point_greengrass.zip 
+    lambda_role_name: ocpp-lambda-execution-role
+    gg_component_name: OcppChargingClientComponent
+    gg_version: "1.0.0"
+    lambda_version: "1"
+  vars_files:
+    - credentials.txt
+
+  tasks:
+    - name: Create security group
+      amazon.aws.ec2_security_group:
+        name: "{{ sec_group }}"
+        description: "Security group for OCPP server"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        rules:
+          - proto: tcp
+            ports: [22, 80, 9000, 8001, 3000]
+            cidr_ip: 0.0.0.0/0
+            rule_desc: Allow SSH and OCPP traffic
+
+    - name: Launch EC2 instance
+      amazon.aws.ec2_instance:
+        name: "{{ instance_name }}"
+        key_name: "{{ key_name }}"
+        instance_type: "{{ instance_type }}"
+        security_group: "{{ sec_group }}"
+        image_id: "{{ image }}"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        network:
+          assign_public_ip: true
+        wait: true
+        tags:
+          Environment: OCPP
+      register: ec2_instance
+
+    - name: Save instance IP to file
+      copy:
+        content: "{{ ec2_instance.instances[0].public_ip_address }}"
+        dest: ./instance_ip.txt
+
+    - name: Set OCPP server IP as global fact
+      set_fact:
+        ocpp_server_ip: "{{ ec2_instance.instances[0].public_ip_address }}"
+
+
+    - name: Add EC2 to inventory
+      add_host:
+        name: "{{ ec2_instance.instances[0].public_ip_address }}"
+        groups: ec2group
+        ansible_user: ubuntu
+        ansible_ssh_private_key_file: "{{ key_path }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ocpp_server_ip: "{{ ec2_instance.instances[0].public_ip_address }}"
+
+    - name: Wait for SSH to become available
+      wait_for:
+        host: "{{ ec2_instance.instances[0].public_ip_address }}"
+        port: 22
+        delay: 30
+        timeout: 600
+        state: started
+
+    - name: Debug added host
+      debug:
+        msg: "Added host {{ ec2_instance.instances[0].public_ip_address }} to group ec2group"
+
+    - name: List all hosts in ec2group
+      debug:
+        msg: "{{ groups['ec2group'] | default('No hosts in ec2group') }}"
+
+# Second play - Deploy FastAPI Server to EC2 (MUST happen before Lambda/Greengrass)
+- name: Deploy FastAPI Server to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: true
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_scp_if_ssh: true
+    ansible_ssh_private_key_file: "{{ key_path }}"
+  tasks:
+    - name: Persist OCPP_SERVER_URL_IP into /etc/profile.d
+      copy:
+        dest: /etc/profile.d/ocpp_server_ip.sh
+        mode: "0644"
+        content: |
+          #!/bin/sh
+          # expose just the raw IP (no protocol or port)
+          export OCPP_SERVER_IP="{{ ocpp_server_ip }}"
+    - name: Wait for cloud-init
+      ansible.builtin.raw: cloud-init status --wait
+      register: cloud_init_result
+      retries: 10
+      delay: 30
+      until: cloud_init_result.rc == 0
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name: [python3, python3-pip, git, awscli]
+        state: present
+
+    - name: Create backend directory
+      file:
+        path: /home/ubuntu/src/backend
+        state: directory
+
+    - name: Copy FastAPI backend code
+      copy:
+        src: "{{ backend_src }}"
+        dest: /home/ubuntu/src/backend/
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Install Python requirements
+      pip:
+        requirements: /home/ubuntu/src/backend/backend/requirements.txt
+        executable: pip3
+
+    - name: Copy systemd service file
+      copy:
+        src: "{{ service_src }}"
+        dest: /etc/systemd/system/ocpp-server.service
+
+    - name: Start FastAPI service
+      systemd:
+        name: ocpp-server
+        enabled: yes
+        state: restarted
+        daemon_reload: yes
+
+    - name: Health check - Wait for FastAPI to be ready
+      uri:
+        url: http://localhost:8001/health
+        method: GET
+        status_code: 200
+      register: result
+      retries: 10
+      delay: 3
+      until: result.status == 200
+
+    - name: Verify FastAPI server is accessible externally
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:8001/health"
+        method: GET
+        status_code: 200
+      register: external_health_check
+      retries: 5
+      delay: 2
+      until: external_health_check.status == 200
+
+    - name: Display FastAPI server status
+      debug:
+        msg: "FastAPI server is running and accessible at http://{{ ansible_default_ipv4.address }}:8001"
+
+# third play- to deploy frontend
+
+- name: Deploy Prebuilt React App to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: false
+  vars:
+    react_dest_path: /var/www/html
+    ansible_scp_if_ssh: true
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure destination directory exists
+      file:
+        path: "{{ react_dest_path }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Copy React build folder to EC2
+      copy:
+        src: "{{ frontend_src }}/"
+        dest: "{{ react_dest_path }}/"
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Generate frontend config.json with API base URL
+      copy:
+        dest: "{{ react_dest_path }}/config.json"
+        content: |
+          {
+            "OCPP_SERVER_IP": "http://{{ hostvars[inventory_hostname].ocpp_server_ip }}:8001"
+          }
+        mode: "0644"
+    - name: Configure nginx for React
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80;
+              server_name localhost;
+
+              root {{ react_dest_path }};
+              index index.html index.htm;
+
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      notify: Restart nginx
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+#fourth play
+- name: Create S3 policy to access and create s3
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    s3_role_name: "s3_bucket_ocpp_role"
+    component_zip_file: "../../charging_point_greengrass.zip"
+    ocpp_component_name: "OcppChargingClientComponent"
+    ocpp_component_version: "1.0.0"
+    ocpp_recipe_path: "/tmp/recipe-download-ocpp.json"
+    s3_bucket_prefix: "ocppbucket"
+    s3_bucket_name: "{{ s3_bucket_prefix }}-{{ aws_account_id }}"
+    s3_object_key: "components/{{ ocpp_component_name }}/{{ ocpp_component_version }}/charging_point_greengrass.zip"
+  tasks:
+    - name: Create S3 access policy for ocpp greengrass
+      copy:
+        dest: /tmp/s3-access-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:PutObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:DeleteObject",
+                  "s3:CreateBucket",
+                  "s3:ListBucket",
+                  "s3:ListBucketVersions",
+                  "s3:DeleteBucket",
+                  "s3:PutObjectTagging",
+                  "s3:PutBucketTagging",
+                  "s3:PutBucketVersioning",
+                  "s3:PutPublicAccessBlock"
+                ],
+                "Resource": [
+                  "*"
+                ]
+              }
+            ]
+          }
+
+    - name: Check if S3 role exists
+      shell: |
+        aws iam get-role --role-name "{{ s3_role_name }}" --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_result
+      failed_when: false
+
+    - name: Create S3 role trust policy if role doesn't exist
+      copy:
+        dest: /tmp/s3-trust-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+      when: s3_role_result.rc != 0
+
+    - name: Create S3 role if it doesn't exist
+      shell: |
+        aws iam create-role \
+          --role-name "{{ s3_role_name }}" \
+          --assume-role-policy-document file:///tmp/s3-trust-policy.json \
+          --description "Role for S3 bucket access" \
+          --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_create_result
+      when: s3_role_result.rc != 0
+
+    - name: Attach S3 access policy to role
+      shell: |
+        aws iam put-role-policy \
+          --role-name "{{ s3_role_name }}" \
+          --policy-name "S3OCPPAccessPolicy" \
+          --policy-document file:///tmp/s3-access-policy.json
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Check if greengrass component zip file exists
+      stat:
+        path: "{{ component_zip_file }}"
+      register: zip_file_check
+
+    - name: Fail if zip file doesn't exist
+      fail:
+        msg: "Component zip file not found at {{ component_zip_file }}"
+      when: not zip_file_check.stat.exists
+
+    - name: Create or ensure S3 bucket exists
+      shell: |
+        aws s3api create-bucket --bucket "{{ s3_bucket_name }}" --region "{{ aws_region }}" 2>/dev/null || true
+        aws s3api head-bucket --bucket "{{ s3_bucket_name }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_bucket_ensure_result
+      retries: 3
+      delay: 5
+      until: s3_bucket_ensure_result.rc == 0
+
+    # - name: Enable versioning on S3 bucket
+    #   shell: |
+    #     aws s3api put-bucket-versioning \
+    #       --bucket "{{ s3_bucket_name }}" \
+    #       --versioning-configuration Status=Enabled \
+    #       --region "{{ aws_region }}"
+    #   environment:
+    #     AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+    #     AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+    #     AWS_DEFAULT_REGION: "{{ aws_region }}"
+    #   register: versioning_result
+    #   retries: 3
+    #   delay: 2
+    #   until: versioning_result.rc == 0
+
+    - name: Block public access on S3 bucket
+      shell: |
+        aws s3api put-public-access-block \
+          --bucket "{{ s3_bucket_name }}" \
+          --public-access-block-configuration \
+          "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: public_access_result
+      retries: 3
+      delay: 2
+      until: public_access_result.rc == 0
+
+    - name: Upload charging client zip file to S3 using AWS CLI
+      shell: |
+        aws s3 cp "{{ component_zip_file }}" "s3://{{ s3_bucket_name }}/{{ s3_object_key }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      delegate_to: localhost
+      register: s3_upload_result
+
+    - name: Set S3 URI for component artifact
+      set_fact:
+        s3_artifact_uri: "s3://{{ s3_bucket_name }}/{{ s3_object_key }}"
+
+    - name: Display S3 upload information
+      debug:
+        msg: 
+          - "S3 Bucket: {{ s3_bucket_name }}"
+          - "S3 Object Key: {{ s3_object_key }}"
+          - "S3 URI: {{ s3_artifact_uri }}"
+
+    - name: Get AWS IoT Data Endpoint
+      command: >
+        aws iot describe-endpoint
+        --endpoint-type iot:Data-ATS
+        --query endpointAddress
+        --output text
+        --region "{{ aws_region }}"
+      register: iot_endpoint_result
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set IoT endpoint fact
+      set_fact:
+        iot_endpoint: "{{ iot_endpoint_result.stdout }}"
+
+    - name: Create recipe.json for OCPP component (S3 artifacts)
+      copy:
+        dest: "{{ ocpp_recipe_path }}"
+        content: |
+                  {
+                    "RecipeFormatVersion": "2020-01-25",
+                    "ComponentName": "{{ ocpp_component_name }}",
+                    "ComponentVersion": "{{ ocpp_component_version }}",
+                    "ComponentConfiguration": {
+                      "DefaultConfiguration": {
+                        "OCPP_SERVER_URL": "{{ ocpp_server_ip }}",
+                        "ClientId": "g2l_core_ocpp"
+                      }
+                    },
+                    "ComponentType": "aws.greengrass.generic",
+                    "ComponentDescription": "Greengrass OCPP component",
+                    "ComponentPublisher": "Custom",
+                    "Manifests": [
+                      {
+                        "Platform": {
+                          "os": "linux"
+                        },
+                        "Lifecycle": {
+                          "Install": {
+                            "Script": "export OCPP_SERVER_URL=\"{configuration:/OCPP_SERVER_URL}\" && cd {artifacts:decompressedPath}/charging_point_greengrass && chmod +x bootstrap.sh && ./bootstrap.sh"
+                          },
+                          "Run": {
+                            "Script": "export OCPP_SERVER_URL=\"{configuration:/OCPP_SERVER_URL}\"  && cd {artifacts:decompressedPath}/charging_point_greengrass && python3 charging_point_greengrass.py"
+                          }
+                        },
+                        "Artifacts": [
+                          {
+                            "Uri": "{{ s3_artifact_uri }}",
+                            "Unarchive": "ZIP"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+
+    - name: Check if OCPP component version already exists
+      shell: |
+        aws greengrassv2 describe-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ ocpp_component_name }}:versions:{{ ocpp_component_version }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: ocpp_component_check
+      failed_when: false
+
+    - name: Delete existing ocpp component version if it exists
+      shell: |
+        aws greengrassv2 delete-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ ocpp_component_name }}:versions:{{ ocpp_component_version }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: ocpp_component_delete
+      when: ocpp_component_check.rc == 0
+      ignore_errors: true
+
+    - name: Wait for component deletion to complete
+      pause:
+        seconds: 10
+      when: ocpp_component_check.rc == 0
+
+    - name: Create OCPP component using S3-based recipe
+      shell: |
+        aws greengrassv2 create-component-version \
+          --inline-recipe fileb://{{ ocpp_recipe_path }} \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: ocpp_component_result
+
+    - name: Display created ocpp component result
+      debug:
+        msg: "OCPP component created: {{ ocpp_component_result.stdout }}"
+
+    - name: Deploy ocpp component to core device
+      shell: |
+        aws greengrassv2 create-deployment \
+          --target-arn "arn:aws:iot:{{ aws_region }}:{{ aws_account_id }}:thing/{{ thing_name }}" \
+          --deployment-name "OCPP-deployment-$(date +%s)" \
+          --components '{
+            "{{ ocpp_component_name }}": {
+              "componentVersion": "{{ ocpp_component_version }}"
+            }
+          }' \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: ocpp_deployment_result
+
+
+    - name: Debug OCPP deployment result
+      debug:
+        msg: "OCPP component deployed: {{ ocpp_deployment_result.stdout }}"
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ ocpp_recipe_path }}"
+      ignore_errors: true

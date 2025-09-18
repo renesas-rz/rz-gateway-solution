@@ -1,0 +1,4 @@
+awsiotsdk
+requests
+urllib3
+boto3

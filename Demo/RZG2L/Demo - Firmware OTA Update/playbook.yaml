@@ -1,0 +1,1153 @@
+---
+- name: Provision EC2 Instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    key_name: ota-server-key
+    instance_type: t3.small
+    instance_name: ota-server
+    sec_group: ota-sg
+    lambda_function_name: OtaBundleDownload
+    lambda_zip_file: ../../download_trigger.zip 
+    lambda_role_name: ota-lambda-execution-role
+    gg_component_name: OtaBundleDownloadComponent
+    gg_version: "1.0.0"
+    lambda_version: "1"    
+  vars_files:
+    - credentials.txt
+
+  tasks:
+    - name: Create security group
+      amazon.aws.ec2_security_group:
+        name: "{{ sec_group }}"
+        description: "Security group for OTA server"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        rules:
+          - proto: tcp
+            ports: [22, 80, 8000, 3000]
+            cidr_ip: 0.0.0.0/0
+            rule_desc: Allow SSH and OTA traffic
+
+    - name: Check if EC2 IAM role exists
+      shell: aws iam get-role --role-name ec2-server-role
+      register: role_check
+      ignore_errors: true
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Create EC2 IAM role if it doesn't exist
+      shell: |
+        aws iam create-role \
+          --role-name ec2-server-role \
+          --assume-role-policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Principal": { "Service": "ec2.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }]
+          }'
+      when: role_check.rc != 0
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+
+
+
+    - name: Check if EC2 instance profile exists
+      shell: aws iam get-instance-profile --instance-profile-name ec2-server-profile
+      register: profile_check
+      ignore_errors: true
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Create EC2 instance profile if it doesn't exist
+      shell: aws iam create-instance-profile --instance-profile-name ec2-server-profile
+      when: profile_check.rc != 0
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Attach IAM role to instance profile if not already attached
+      shell: |
+        attached_roles=$(aws iam get-instance-profile \
+          --instance-profile-name ec2-server-profile \
+          --query "InstanceProfile.Roles[*].RoleName" \
+          --output text)
+
+        if [[ "$attached_roles" != *"ec2-server-role"* ]]; then
+          aws iam add-role-to-instance-profile \
+            --instance-profile-name ec2-server-profile \
+            --role-name ec2-server-role
+        fi
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Launch EC2 instance
+      amazon.aws.ec2_instance:
+        name: "{{ instance_name }}"
+        key_name: "{{ key_name }}"
+        instance_type: "{{ instance_type }}"
+        security_group: "{{ sec_group }}"
+        image_id: "{{ image }}"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        network:
+          assign_public_ip: true
+        wait: true
+        iam_instance_profile: ec2-server-profile
+        tags:
+          Environment: OTA
+      register: ec2_instance
+
+    - name: Save instance IP to file
+      copy:
+        content: "{{ ec2_instance.instances[0].public_ip_address }}"
+        dest: ./instance_ip.txt
+
+    - name: Add EC2 to inventory
+      add_host:
+        name: "{{ ec2_instance.instances[0].public_ip_address }}"
+        groups: ec2group
+        ansible_user: ubuntu
+        ansible_ssh_private_key_file: "{{ key_path }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ota_server_ip: "{{ ec2_instance.instances[0].public_ip_address }}"
+
+    - name: Wait for SSH to become available
+      wait_for:
+        host: "{{ ec2_instance.instances[0].public_ip_address }}"
+        port: 22
+        delay: 30
+        timeout: 600
+        state: started
+
+    - name: Set BUCKET_NAME environment variable on EC2
+      copy:
+        dest: /etc/profile.d/bucket_name.sh
+        content: |
+          export BUCKET_NAME="{{ bucket_name }}"
+        owner: root
+        group: root
+        mode: '0644'
+      become: true
+      delegate_to: "{{ ec2_instance.instances[0].public_ip_address }}"
+      vars:
+        ansible_user: ubuntu
+        ansible_ssh_private_key_file: "{{ key_path }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+    - name: Debug added host
+      debug:
+        msg: "Added host {{ ec2_instance.instances[0].public_ip_address }} to group ec2group"
+
+    - name: List all hosts in ec2group
+      debug:
+        msg: "{{ groups['ec2group'] | default('No hosts in ec2group') }}"
+
+# Second play - Deploy FastAPI Server to EC2 (MUST happen before Lambda/Greengrass)
+- name: Deploy FastAPI Server to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: true
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_scp_if_ssh: true
+    ansible_ssh_private_key_file: "{{ key_path }}"
+  tasks:
+    # - name: Persist OTA_SERVER_URL_IP into /etc/profile.d
+    #   copy:
+    #     dest: /etc/profile.d/ota_server_ip.sh
+    #     mode: "0644"
+    #     content: |
+    #       #!/bin/sh
+    #       # expose just the raw IP (no protocol or port)
+    #       export OTA_SERVER_IP="{{ ota_server_ip }}"
+
+    - name: Persist env vars for backend service
+      copy:
+        dest: /etc/ota-backend.env
+        mode: "0644"
+        content: |
+          OTA_SERVER_IP={{ ota_server_ip }}
+          BUCKET_NAME={{ bucket_name }}
+
+
+    - name: Wait for cloud-init
+      ansible.builtin.raw: cloud-init status --wait
+      register: cloud_init_result
+      retries: 10
+      delay: 30
+      until: cloud_init_result.rc == 0
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name: [python3, python3-pip, git, awscli]
+        state: present
+
+    - name: Create backend directory
+      file:
+        path: /home/ubuntu/src/backend
+        state: directory
+
+    - name: Copy FastAPI backend code
+      copy:
+        src: "{{ backend_src }}"
+        dest: /home/ubuntu/src/backend/
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Install Python requirements
+      pip:
+        requirements: /home/ubuntu/src/backend/backend/requirements.txt
+        executable: pip3
+
+    - name: Copy systemd service file
+      copy:
+        src: "{{ service_src }}"
+        dest: /etc/systemd/system/ota-server.service
+
+    - name: Start FastAPI service
+      systemd:
+        name: ota-server
+        enabled: yes
+        state: restarted
+        daemon_reload: yes
+
+    - name: Health check - Wait for FastAPI to be ready
+      uri:
+        url: http://localhost:8000/health
+        method: GET
+        status_code: 200
+      register: result
+      retries: 10
+      delay: 3
+      until: result.status == 200
+
+    - name: Verify FastAPI server is accessible externally
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:8000/health"
+        method: GET
+        status_code: 200
+      register: external_health_check
+      retries: 5
+      delay: 2
+      until: external_health_check.status == 200
+
+    - name: Display FastAPI server status
+      debug:
+        msg: "FastAPI server is running and accessible at http://{{ ansible_default_ipv4.address }}:8000"
+
+# third play- to deploy frontend
+
+- name: Deploy Prebuilt React App to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: false
+  vars:
+    react_dest_path: /var/www/html
+    ansible_scp_if_ssh: true
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure destination directory exists
+      file:
+        path: "{{ react_dest_path }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Copy React build folder to EC2
+      copy:
+        src: "{{ frontend_src }}/"
+        dest: "{{ react_dest_path }}/"
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Generate frontend config.json with API base URL
+      copy:
+        dest: "{{ react_dest_path }}/config.json"
+        content: |
+          {
+            "OTA_SERVER_IP": "http://{{ hostvars[inventory_hostname].ota_server_ip }}:8000"
+          }
+        mode: "0644"
+    - name: Configure nginx for React
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80;
+              server_name localhost;
+
+              root {{ react_dest_path }};
+              index index.html index.htm;
+
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      notify: Restart nginx
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+# fourth play to create s3 bucket and grant ec2 permission to put and get object.
+
+- name: Create S3 policy to access and create s3
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    s3_bucket_name: "{{ bucket_name }}"
+    aws_region: "{{ aws_region }}"
+    s3_role_name: s3_bucket_bundle_role
+  tasks:
+    - name: Create S3 access policy for bundle_bucket
+      copy:
+        dest: /tmp/s3-access-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:PutObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:DeleteObject",
+                  "s3:CreateBucket",
+                  "s3:ListBucket",
+                  "s3:ListBucketVersions",
+                  "s3:DeleteBucket",
+                  "s3:PutObjectTagging",
+                  "s3:PutBucketTagging"
+                ],
+                "Resource": [
+                  "*"
+                ]
+              }
+            ]
+          }
+
+    - name: Check if S3 role exists
+      shell: |
+        aws iam get-role --role-name "{{ s3_role_name }}" --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_result
+      failed_when: false
+
+    - name: Create S3 role trust policy if role doesn't exist
+      copy:
+        dest: /tmp/s3-trust-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+      when: s3_role_result.rc != 0
+
+    - name: Create S3 role if it doesn't exist
+      shell: |
+        aws iam create-role \
+          --role-name "{{ s3_role_name }}" \
+          --assume-role-policy-document file:///tmp/s3-trust-policy.json \
+          --description "Role for S3 bucket access" \
+          --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_create_result
+      when: s3_role_result.rc != 0
+
+    - name: Attach S3 access policy to role
+      shell: |
+        aws iam put-role-policy \
+          --role-name "{{ s3_role_name }}" \
+          --policy-name "S3BundleAccessPolicy" \
+          --policy-document file:///tmp/s3-access-policy.json
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Check if S3 bucket exists
+      shell: |
+        aws s3api head-bucket --bucket "{{ s3_bucket_name }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_bucket_result
+      failed_when: false
+
+    - name: Create S3 bucket if it doesn't exist
+      shell: |
+        aws s3api create-bucket --bucket "{{ s3_bucket_name }}" --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_bucket_create_result
+      when: s3_bucket_result.rc != 0
+
+    - name: Put or update inline S3 access policy for EC2 role
+      shell: |
+        aws iam put-role-policy \
+          --role-name ec2-server-role \
+          --policy-name EC2S3AccessPolicy \
+          --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::{{ bucket_name }}"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:PutObject",
+                  "s3:DeleteObject"
+                ],
+                "Resource": "arn:aws:s3:::{{ bucket_name }}/*"
+              }
+            ]
+          }'
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+
+
+
+
+#fifth play
+- name: Create Lambda Function and Greengrass Component
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    key_name: ota-server-key
+    instance_type: t2.small
+    instance_name: ota-server
+    sec_group: ota-sg
+    lambda_function_name: OtaBundleDownload
+    lambda_zip_file: ../../download_trigger.zip
+    lambda_role_name: ota-lambda-execution-role
+    gg_component_name: OtaBundleDownloadComponent
+    gg_version: "1.0.0"
+    lambda_version: "1"
+  vars_files:
+    - credentials.txt
+
+  tasks:
+    - name: Get FastAPI server IP from file
+      slurp:
+        src: ./instance_ip.txt
+      register: fastapi_server_ip
+
+    - name: Set FastAPI server IP as fact
+      set_fact:
+        fastapi_ip: "{{ fastapi_server_ip.content | b64decode | trim }}"
+
+    - name: Verify FastAPI server is still running before proceeding
+      uri:
+        url: "http://{{ fastapi_ip }}:8000/health"
+        method: GET
+        status_code: 200
+      register: pre_lambda_health_check
+      retries: 3
+      delay: 2
+      until: pre_lambda_health_check.status == 200
+
+    - name: Display confirmation
+      debug:
+        msg: "FastAPI server confirmed running at {{ fastapi_ip }}:8000 - proceeding with Lambda creation"
+
+    - name: Create trust policy document for Lambda role
+      copy:
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        dest: /tmp/lambda-trust-policy.json
+
+    - name: Create Lambda logs policy
+      copy:
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": "arn:aws:logs:*:*:*"
+              }
+            ]
+          }
+        dest: /tmp/lambda-logs-policy.json
+
+    - name: Check if Lambda execution role exists
+      shell: |
+        aws iam get-role --role-name "{{ lambda_role_name }}" --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: lambda_role_result
+      failed_when: false
+
+    - name: Create Lambda execution role if it doesn't exist
+      shell: |
+        aws iam create-role \
+          --role-name "{{ lambda_role_name }}" \
+          --assume-role-policy-document file:///tmp/lambda-trust-policy.json \
+          --description "Execution role for Ota Lambda function" \
+          --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: lambda_role_create_result
+      when: lambda_role_result.rc != 0
+
+    - name: Create custom logs policy for Lambda
+      shell: |
+        aws iam put-role-policy \
+          --role-name "{{ lambda_role_name }}" \
+          --policy-name "LambdaLogsPolicy" \
+          --policy-document file:///tmp/lambda-logs-policy.json
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      when: lambda_role_result.rc != 0
+
+    - name: Attach basic execution policy to Lambda role
+      shell: |
+        aws iam attach-role-policy \
+          --role-name "{{ lambda_role_name }}" \
+          --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      when: lambda_role_result.rc != 0
+
+    - name: Attach IoT policy to Lambda role (for Greengrass)
+      shell: |
+        aws iam attach-role-policy \
+          --role-name "{{ lambda_role_name }}" \
+          --policy-arn "arn:aws:iam::aws:policy/service-role/AWSGreengrassResourceAccessRolePolicy"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      when: lambda_role_result.rc != 0
+      ignore_errors: true
+
+    - name: Wait for lambda role to be available
+      pause:
+        seconds: 15
+      when: lambda_role_result.rc != 0
+
+    - name: Set Lambda role ARN
+      set_fact:
+        lambda_role_arn: "{{ (lambda_role_create_result.stdout if lambda_role_result.rc != 0 else lambda_role_result.stdout) | trim }}"
+
+    - name: Get AWS Account ID
+      command: aws sts get-caller-identity --query Account --output text
+      register: account_id_output
+
+    - name:  Set AWS Account ID fact
+      set_fact:
+        account_id: "{{ account_id_output.stdout }}"
+
+    - name: Attach inline policy to Lambda role for IoT publish (to trigger Greengrass)
+      iam_policy:
+        iam_type: role
+        iam_name: "{{ lambda_role_name }}"
+        policy_name: "AllowIoTPublishForGreengrass"
+        state: present
+        policy_json: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iot:Publish"
+                ],
+                "Resource": "arn:aws:iot:{{ aws_region }}:{{ account_id }}:topic/download/task"
+              }
+            ]
+          }
+
+
+
+    # Debug: Check if Lambda zip file exists
+    - name: Check if Lambda zip file exists
+      stat:
+        path: "{{ lambda_zip_file }}"
+      register: zip_file_check
+
+    - name: Fail if zip file doesn't exist
+      fail:
+        msg: "Lambda zip file not found at {{ lambda_zip_file }}"
+      when: not zip_file_check.stat.exists
+
+    - name: Debug - List all Lambda functions before creation
+      shell: |
+        aws lambda list-functions --region "{{ aws_region }}" --query 'Functions[?FunctionName==`{{ lambda_function_name }}`]'
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: existing_functions
+
+    - name: Show existing functions
+      debug:
+        msg: "Existing Lambda functions: {{ existing_functions.stdout }}"
+
+    - name: Create or Update Lambda function
+      shell: |
+        # Check if function exists
+        if aws lambda get-function --function-name "{{ lambda_function_name }}" --region "{{ aws_region }}" 2>/dev/null; then
+          echo "Function exists, updating..."
+          # Update the function code first
+          aws lambda update-function-code \
+            --function-name "{{ lambda_function_name }}" \
+            --zip-file fileb://"{{ lambda_zip_file }}" \
+            --region "{{ aws_region }}" > /dev/null
+          
+          # Update function configuration with correct environment variables and increased resources
+          aws lambda update-function-configuration \
+            --function-name "{{ lambda_function_name }}" \
+            --environment Variables="{OTA_SERVER_URL={{ fastapi_ip }}}" \
+            --timeout 900 \
+            --memory-size 512 \
+            --region "{{ aws_region }}" > /dev/null
+          
+          # Publish a new version
+          aws lambda publish-version \
+            --function-name "{{ lambda_function_name }}" \
+            --region "{{ aws_region }}" \
+            --query 'FunctionArn' --output text
+        else
+          echo "Creating new function..."
+          aws lambda create-function \
+            --function-name "{{ lambda_function_name }}" \
+            --runtime python3.9 \
+            --role "{{ lambda_role_arn }}" \
+            --handler lambda_bundle.lambda_handler \
+            --zip-file fileb://"{{ lambda_zip_file }}" \
+            --timeout 900 \
+            --memory-size 512 \
+            --publish \
+            --region "{{ aws_region }}" \
+            --environment Variables="{OTA_SERVER_URL={{ fastapi_ip }}}" \
+            --query 'FunctionArn' --output text
+        fi
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: lambda_cli_result
+
+    - name: Attach inline policy to EC2 role for invoking Lambda function
+      iam_policy:
+        iam_type: role
+        iam_name: "ec2-server-role"
+        policy_name: "AllowInvokeOtaLambda"
+        state: present
+        policy_json: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "lambda:InvokeFunction",
+                "Resource": "arn:aws:lambda:{{ aws_region }}:{{ account_id }}:function:{{ lambda_function_name }}"
+              }
+            ]
+          }
+
+    - name: Debug Lambda creation result
+      debug:
+        msg: "Lambda creation result: {{ lambda_cli_result }}"
+
+    - name: Extract Lambda ARN from result
+      set_fact:
+        lambda_function_arn: "{{ lambda_cli_result.stdout | trim }}"
+
+    - name: Debug extracted ARN
+      debug:
+        msg: "Extracted Lambda ARN: {{ lambda_function_arn }}"
+
+    # Wait a bit for Lambda to be fully ready
+    - name: Wait for Lambda to be fully ready
+      pause:
+        seconds: 10
+
+    - name: Verify Lambda function exists and get details
+      shell: |
+        aws lambda get-function --function-name "{{ lambda_function_name }}" --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: lambda_details
+
+    - name: Debug Lambda details
+      debug:
+        msg: "Lambda function details: {{ lambda_details.stdout }}"
+
+    - name: Get latest published version ARN for Lambda function
+      shell: |
+        aws lambda list-versions-by-function \
+          --function-name "{{ lambda_function_name }}" \
+          --region "{{ aws_region }}" \
+          --query 'Versions[?Version!=`$LATEST`][-1].FunctionArn' \
+          --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: latest_version_result
+
+    - name: Get $LATEST version ARN as fallback
+      shell: |
+        aws lambda get-function \
+          --function-name "{{ lambda_function_name }}" \
+          --region "{{ aws_region }}" \
+          --query 'Configuration.FunctionArn' \
+          --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: latest_fallback_result
+      when: latest_version_result.stdout | trim == "" or latest_version_result.stdout | trim == "None"
+
+    - name: Publish a new version of Lambda function 
+      shell: |
+        aws lambda publish-version \
+          --function-name "{{ lambda_function_name }}" \
+          --region "{{ aws_region }}" \
+          --query 'FunctionArn' \
+          --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: published_version_result
+      when: latest_version_result.stdout | trim == "" or latest_version_result.stdout | trim == "None"
+
+    - name: Set verified Lambda ARN using published version
+      set_fact:
+        verified_lambda_arn: "{{ latest_version_result.stdout | trim }}"
+      when: latest_version_result.stdout | trim != "" and latest_version_result.stdout | trim != "None"
+
+    - name: Set verified Lambda ARN using newly published version
+      set_fact:
+        verified_lambda_arn: "{{ published_version_result.stdout | trim }}"
+      when: published_version_result is defined and published_version_result.stdout | trim != ""
+
+    - name: Set verified Lambda ARN using $LATEST as last resort
+      set_fact:
+        verified_lambda_arn: "{{ latest_fallback_result.stdout | trim }}"
+      when: verified_lambda_arn is not defined and latest_fallback_result is defined
+
+    - name: Debug final ARN for Greengrass
+      debug:
+        msg: "ARN for Greengrass (versioned): {{ verified_lambda_arn }}"
+
+    - name: Fail if no valid Lambda ARN found
+      fail:
+        msg: "Could not determine a valid Lambda ARN for the function {{ lambda_function_name }}"
+      when: verified_lambda_arn is not defined or verified_lambda_arn == ""
+    
+    - name: Ensure temp directory for Lambda layer exists
+      file:
+        path: /tmp/lambda_layer/python
+        state: directory
+        mode: '0755'
+    
+    - name: Install Python dependencies into layer folder
+      shell: |
+        pip3 install -r {{ lambda_requirements_filepath }} -t /tmp/lambda_layer/python
+      args:
+        chdir: /tmp
+      environment:
+        PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        PIP_NO_CACHE_DIR: "1"
+    
+    - name: Package Lambda layer
+      shell: |
+        cd /tmp/lambda_layer && zip -r /tmp/requirements_layer.zip python
+    
+    - name: Publish Lambda layer
+      shell: |
+        aws lambda publish-layer-version \
+          --layer-name ota-requirements \
+          --zip-file fileb:///tmp/requirements_layer.zip \
+          --compatible-runtimes python3.9 \
+          --region {{ aws_region }} \
+          --query 'LayerVersionArn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: lambda_layer_result
+
+
+    - name: Debug published layer ARN
+      debug:
+        msg: "Published Layer ARN: {{ lambda_layer_result.stdout }}"
+
+    - name: Update Lambda function configuration with layer
+      shell: |
+        aws lambda update-function-configuration \
+          --function-name "{{ lambda_function_name }}" \
+          --layers "{{ lambda_layer_result.stdout | trim }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Create Greengrass component configuration JSON file
+      copy:
+        content: |
+          {
+            "lambdaArn": {{ verified_lambda_arn | to_json }},
+            "componentName": {{ gg_component_name | to_json }},
+            "componentVersion": {{ gg_version | to_json }},
+            "componentLambdaParameters": {
+              "eventSources": [],
+              "maxQueueSize": 1000,
+              "maxInstancesCount": 1,
+              "maxIdleTimeInSeconds": 300,
+              "timeoutInSeconds": 300,
+              "statusTimeoutInSeconds": 60,
+              "pinned": true,
+              "inputPayloadEncodingType": "json",
+              "execArgs": [],
+              "environmentVariables": {
+                "OTA_SERVER_URL": {{ fastapi_ip | to_json }}
+              },
+              "linuxProcessParams": {
+                "isolationMode": "NoContainer",
+                "containerParams": {
+                  "memorySizeInKB": 524288
+                }
+              }
+            }
+          }
+        dest: /tmp/greengrass-component.json
+
+    - name: Create Greengrass component using AWS CLI
+      shell: |
+        aws greengrassv2 create-component-version \
+          --lambda-function file:///tmp/greengrass-component.json \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: gg_component_result
+
+    - name: Debug Greengrass component creation result
+      debug:
+        msg: "Greengrass component creation result: {{ gg_component_result }}"
+
+    - name: Deploy Greengrass component to core device
+      shell: |
+        aws greengrassv2 create-deployment \
+          --target-arn "arn:aws:iot:{{ aws_region }}:{{ aws_account_id }}:thing/{{ thing_name }}" \
+          --deployment-name "{{ gg_component_name }}-deployment-$(date +%s)" \
+          --components '{
+            "{{ gg_component_name }}": {
+              "componentVersion": "{{ gg_version }}",
+              "configurationUpdate": {
+                "merge": "{\"OTA_SERVER_URL\":\"{{ fastapi_ip }}\"}"
+              }
+            }
+          }' \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: gg_deployment_result
+
+    - name: Print Greengrass deployment result
+      debug:
+        msg: "Greengrass component deployed: {{ gg_deployment_result.stdout }}"
+
+
+# ===== Additional Component: Regular Greengrass Component =====
+    - name: Set basic vars for S3-based Greengrass component
+      set_fact:
+        worker_zip_file: "../../lambda_worker.zip"
+        worker_component_name: "DownloadWorker"
+        worker_component_version: "1.1.1"
+        worker_recipe_path: "/tmp/recipe-download-worker.json"
+        s3_bucket_prefix: "otatest"
+        timestamp: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+    - name: Set derived vars for S3-based Greengrass component
+      set_fact:
+        s3_bucket_name: "{{ s3_bucket_prefix }}-{{ aws_account_id }}-{{ timestamp }}"
+        s3_object_key: "components/{{ worker_component_name }}/{{ worker_component_version }}/lambda_worker.zip"
+
+    - name: Verify source zip file exists
+      stat:
+        path: "{{ worker_zip_file }}"
+      register: source_zip_stat
+      delegate_to: localhost
+
+    - name: Fail if source zip file doesn't exist
+      fail:
+        msg: "Source zip file {{ worker_zip_file }} not found"
+      when: not source_zip_stat.stat.exists
+
+    - name: Create S3 bucket for Greengrass components using AWS CLI
+      shell: |
+        aws s3 mb s3://{{ s3_bucket_name }} --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: s3_bucket_result
+      failed_when: s3_bucket_result.rc != 0
+
+
+    - name: Block public access on S3 bucket
+      shell: |
+        aws s3api put-public-access-block \
+          --bucket {{ s3_bucket_name }} \
+          --public-access-block-configuration \
+          BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Upload worker zip file to S3 using AWS CLI
+      shell: |
+        aws s3 cp "{{ worker_zip_file }}" "s3://{{ s3_bucket_name }}/{{ s3_object_key }}" \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      delegate_to: localhost
+      register: s3_upload_result
+
+    - name: Set S3 URI for component artifact
+      set_fact:
+        s3_artifact_uri: "s3://{{ s3_bucket_name }}/{{ s3_object_key }}"
+
+    - name: Display S3 upload information
+      debug:
+        msg: 
+          - "S3 Bucket: {{ s3_bucket_name }}"
+          - "S3 Object Key: {{ s3_object_key }}"
+          - "S3 URI: {{ s3_artifact_uri }}"
+
+    - name: Get AWS IoT Data Endpoint
+      command: >
+        aws iot describe-endpoint
+        --endpoint-type iot:Data-ATS
+        --query endpointAddress
+        --output text
+        --region "{{ aws_region }}"
+      register: iot_endpoint_result
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set IoT endpoint fact
+      set_fact:
+        iot_endpoint: "{{ iot_endpoint_result.stdout }}"
+
+    - name: Create recipe.json for DownloadWorker component (S3 artifacts)
+      copy:
+        dest: "{{ worker_recipe_path }}"
+        content: |
+                  {
+                    "RecipeFormatVersion": "2020-01-25",
+                    "ComponentName": "{{ worker_component_name }}",
+                    "ComponentVersion": "{{ worker_component_version }}",
+                    "ComponentConfiguration": {
+                      "DefaultConfiguration": {
+                        "IOT_DATA_ENDPOINT": "{{ iot_endpoint }}",
+                        "AWS_ACCESS_KEY_ID": "{{ ec2_access_key }}",
+                        "AWS_SESSION_TOKEN": "{{ ec2_session_token }}",
+                        "AWS_SECRET_ACCESS_KEY": "{{ ec2_secret_key }}",
+                        "ClientId": "{{thing_name}}",
+                        "BUCKET_NAME" : "{{ bucket_name }}",
+                        "accessControl": {
+                          "aws.greengrass.ipc.mqttproxy": {
+                            "DownloadWorker:mqttproxy:1": {
+                              "policyDescription": "Allows access to MQTT proxy",
+                              "operations": [
+                                "aws.greengrass#PublishToIoTCore",
+                                "aws.greengrass#SubscribeToIoTCore"
+                              ],
+                              "resources": ["*"]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "ComponentType": "aws.greengrass.generic",
+                    "ComponentDescription": "Greengrass DownloadWorker component",
+                    "ComponentPublisher": "Custom",
+                    "Manifests": [
+                      {
+                        "Platform": {
+                          "os": "linux"
+                        },
+                        "Lifecycle": {
+                          "Install": {
+                            "Script": "export IOT_ENDPOINT=\"{configuration:/IOT_DATA_ENDPOINT}\" && export AWS_ACCESS_KEY_ID=\"{configuration:/AWS_ACCESS_KEY_ID}\" && export AWS_SECRET_ACCESS_KEY=\"{configuration:/AWS_SECRET_ACCESS_KEY}\" && export AWS_SESSION_TOKEN=\"{configuration:/AWS_SESSION_TOKEN}\" && export BUCKET_NAME=\"{configuration:/BUCKET_NAME}\" && cd {artifacts:decompressedPath}/lambda_worker && chmod +x bootstrap.sh && ./bootstrap.sh"
+                          },
+                          "Run": {
+                            "Script": "export IOT_ENDPOINT=\"{configuration:/IOT_DATA_ENDPOINT}\" && export AWS_ACCESS_KEY_ID=\"{configuration:/AWS_ACCESS_KEY_ID}\" && export AWS_SECRET_ACCESS_KEY=\"{configuration:/AWS_SECRET_ACCESS_KEY}\" && export AWS_SESSION_TOKEN=\"{configuration:/AWS_SESSION_TOKEN}\" && export BUCKET_NAME=\"{configuration:/BUCKET_NAME}\" && cd {artifacts:decompressedPath}/lambda_worker && python3 download_worker.py"
+                          }
+                        },
+                        "Artifacts": [
+                          {
+                            "Uri": "{{ s3_artifact_uri }}",
+                            "Unarchive": "ZIP"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+
+    - name: Check if DownloadWorker component version already exists
+      shell: |
+        aws greengrassv2 describe-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ worker_component_name }}:versions:{{ worker_component_version }}" \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: worker_component_check
+      failed_when: false
+
+    - name: Delete existing DownloadWorker component version if it exists
+      shell: |
+        aws greengrassv2 delete-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ worker_component_name }}:versions:{{ worker_component_version }}" \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: worker_component_delete
+      when: worker_component_check.rc == 0
+      ignore_errors: true
+
+    - name: Wait for component deletion to complete
+      pause:
+        seconds: 10
+      when: worker_component_check.rc == 0
+
+    - name: Create DownloadWorker component using S3-based recipe
+      shell: |
+        aws greengrassv2 create-component-version \
+          --inline-recipe fileb://{{ worker_recipe_path }} \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: worker_component_result
+
+    - name: Display created DownloadWorker component result
+      debug:
+        msg: "DownloadWorker component created: {{ worker_component_result.stdout }}"
+
+    - name: Deploy DownloadWorker component to core device
+      shell: |
+        aws greengrassv2 create-deployment \
+          --target-arn "arn:aws:iot:{{ aws_region }}:{{ aws_account_id }}:thing/{{ thing_name }}" \
+          --deployment-name "DownloadWorker-deployment-$(date +%s)" \
+          --components '{
+            "{{ worker_component_name }}": {
+              "componentVersion": "{{ worker_component_version }}"
+            }
+          }' \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: worker_deployment_result
+
+    - name: Debug DownloadWorker deployment result
+      debug:
+        msg: "DownloadWorker deployed: {{ worker_deployment_result.stdout }}"
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/lambda-trust-policy.json
+        - /tmp/lambda-logs-policy.json
+        - /tmp/greengrass-component.json
+        - "{{ worker_recipe_path }}"
+      ignore_errors: true

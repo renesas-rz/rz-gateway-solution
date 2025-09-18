@@ -1,0 +1,15 @@
+[Unit]
+Description=OCPP Central Server (FastAPI)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/src/backend/backend
+ExecStart=/usr/bin/env python3 /home/ubuntu/src/backend/backend/central_server.py
+Restart=always
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=multi-user.target
