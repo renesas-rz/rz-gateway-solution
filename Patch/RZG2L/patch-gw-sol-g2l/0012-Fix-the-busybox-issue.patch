@@ -1,3 +1,6 @@
+From 9bb3469663a9235969c24633780c2f50eeafa90e Mon Sep 17 00:00:00 2001
+From: A Delarge
+Date: Mon, 21 Jul 2025 22:14:53 +0530
 Subject: [PATCH 12/24] Fix the busybox issue
 
 Issue:
@@ -5,6 +8,7 @@ Issue:
 Fix:
     Modified the changes manually in the current version of busybox
 
+Signed-off-by: A Delarge
 ---
  ...e-sizelimit-and-offset-option-for-lo.patch | 64 ++++++++-----------
  1 file changed, 26 insertions(+), 38 deletions(-)
