@@ -1,4 +1,4 @@
-Subject: [PATCH 16/23] U-boot: Adding u-boot env to MMC
+Subject: [PATCH 16/24] U-boot: Adding u-boot env to MMC
 
 - u-boot env is enabled on mmc0 at offset 0x110000
 

@@ -1,4 +1,4 @@
-Subject: [PATCH 22/23] u-boot: Adding env required for rauc
+Subject: [PATCH 22/24] u-boot: Adding env required for rauc
 
 - Sets below env in u-boot
   * BOOT_ORDER="A B"

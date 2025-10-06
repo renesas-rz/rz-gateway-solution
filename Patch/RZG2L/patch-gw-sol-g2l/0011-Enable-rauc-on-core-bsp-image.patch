@@ -1,4 +1,4 @@
-Subject: [PATCH 11/23] Enable rauc on core-bsp-image
+Subject: [PATCH 11/24] Enable rauc on core-bsp-image
 
 - Enable rauc meta layer and configuration
 - Created openssl certeficate for signing the bundle

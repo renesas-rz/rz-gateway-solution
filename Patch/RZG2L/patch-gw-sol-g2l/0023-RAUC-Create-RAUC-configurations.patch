@@ -1,4 +1,4 @@
-Subject: [PATCH 23/23] RAUC: Create RAUC configurations
+Subject: [PATCH 23/24] RAUC: Create RAUC configurations
 
 - Implement a recipe to generate RAUC Manifest file for
   rauc bundle creation

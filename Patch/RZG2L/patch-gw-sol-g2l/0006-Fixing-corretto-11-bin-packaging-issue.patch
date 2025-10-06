@@ -1,4 +1,4 @@
-Subject: [PATCH 06/23] Fixing corretto-11-bin packaging issue
+Subject: [PATCH 06/24] Fixing corretto-11-bin packaging issue
 
 - do_package expecting libraries at lib folder for packaging,but files are installed in lib64.
 - Renaming the lib64 to lib is fixed the issue

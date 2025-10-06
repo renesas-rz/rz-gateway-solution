@@ -1,4 +1,4 @@
-Subject: [PATCH 03/23] Enable aws tools and greengrass development tools to bsp image
+Subject: [PATCH 03/24] Enable aws tools and greengrass development tools to bsp image
 
 ---
  .../meta-rz-common/include/core-image-bsp.inc      | 14 ++++++++++++++

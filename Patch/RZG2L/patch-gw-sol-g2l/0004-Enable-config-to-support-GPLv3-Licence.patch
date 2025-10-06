@@ -1,4 +1,4 @@
-Subject: [PATCH 04/23] Enable config to support GPLv3 Licence
+Subject: [PATCH 04/24] Enable config to support GPLv3 Licence
 
 - Enabled GPLv3 Licence to resolve networking package dependencies when aws greengrass meta layer is enabled
 

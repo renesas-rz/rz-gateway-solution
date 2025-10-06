@@ -1,4 +1,4 @@
-Subject: [PATCH 08/23] Integration of u-boot env tools
+Subject: [PATCH 08/24] Integration of u-boot env tools
 
 - Modified u-boot.inc file to build for fw tools
 - Split fw tools from u-boot to u-boot-fw-utils

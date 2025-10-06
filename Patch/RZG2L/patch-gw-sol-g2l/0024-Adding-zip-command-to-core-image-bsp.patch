@@ -1,0 +1,188 @@
+Subject: [PATCH 24/24] Adding zip command to core-image-bsp
+
+---
+ .../zip/files/10-remove-build-date.patch      | 19 +++++++
+ .../zip/files/fix-security-format.patch       | 42 +++++++++++++++
+ .../files/zipnote-crashes-with-segfault.patch | 22 ++++++++
+ .../meta-oe/recipes-extended/zip/zip_3.0.bb   | 53 +++++++++++++++++++
+ .../meta-rz-common/include/core-image-bsp.inc |  1 +
+ 5 files changed, 137 insertions(+)
+ create mode 100644 meta-openembedded/meta-oe/recipes-extended/zip/files/10-remove-build-date.patch
+ create mode 100644 meta-openembedded/meta-oe/recipes-extended/zip/files/fix-security-format.patch
+ create mode 100644 meta-openembedded/meta-oe/recipes-extended/zip/files/zipnote-crashes-with-segfault.patch
+ create mode 100644 meta-openembedded/meta-oe/recipes-extended/zip/zip_3.0.bb
+
+diff --git a/meta-openembedded/meta-oe/recipes-extended/zip/files/10-remove-build-date.patch b/meta-openembedded/meta-oe/recipes-extended/zip/files/10-remove-build-date.patch
+new file mode 100644
+index 00000000..6fd04df1
+--- /dev/null
++++ b/meta-openembedded/meta-oe/recipes-extended/zip/files/10-remove-build-date.patch
+@@ -0,0 +1,19 @@
++From: Santiago Vila <sanvila@debian.org>
++Subject: Remove (optional) build date to make the build reproducible
++Bug-Debian: http://bugs.debian.org/779042
++
++Upstream-Status: Inactive-Upstream [no upstream]
++
++Signed-off-by: Joshua Watt <JPEWhacker@gmail.com>
++
++--- a/unix/unix.c
+++++ b/unix/unix.c
++@@ -1020,7 +1020,7 @@
++
++
++ /* Define the compile date string */
++-#ifdef __DATE__
+++#if 0
++ #  define COMPILE_DATE " on " __DATE__
++ #else
++ #  define COMPILE_DATE ""
+diff --git a/meta-openembedded/meta-oe/recipes-extended/zip/files/fix-security-format.patch b/meta-openembedded/meta-oe/recipes-extended/zip/files/fix-security-format.patch
+new file mode 100644
+index 00000000..f85fddbc
+--- /dev/null
++++ b/meta-openembedded/meta-oe/recipes-extended/zip/files/fix-security-format.patch
+@@ -0,0 +1,42 @@
++zip: Fixing security formatting issues
++
++Fix security formatting issues related to printing without NULL argument
++
++zip.c: In function 'help_extended':
++zip.c:1031:5: error: format not a string literal and no format arguments [-Werror=format-security]
++     printf(text[i]);
++     ^
++zip.c: In function 'version_info':
++zip.c:1228:5: error: format not a string literal and no format arguments [-Werror=format-security]
++     printf(cryptnote[i]);
++     ^
++
++[YOCTO #9552]
++[https://bugzilla.yoctoproject.org/show_bug.cgi?id=9552]
++
++Upstream-Status: Inactive-Upstream [need a new release]
++
++Signed-off-by: Edwin Plauchu <edwin.plauchu.camacho@intel.com>
++
++diff --git a/zip.c b/zip.c
++index 439821f..d7da768 100644
++--- a/zip.c
+++++ b/zip.c
++@@ -1028,7 +1028,7 @@ local void help_extended()
++
++   for (i = 0; i < sizeof(text)/sizeof(char *); i++)
++   {
++-    printf(text[i]);
+++    fputs(text[i],stdout);
++     putchar('\n');
++   }
++ #ifdef DOS
++@@ -1225,7 +1225,7 @@ local void version_info()
++             CR_MAJORVER, CR_MINORVER, CR_BETA_VER, CR_VERSION_DATE);
++   for (i = 0; i < sizeof(cryptnote)/sizeof(char *); i++)
++   {
++-    printf(cryptnote[i]);
+++    fputs(cryptnote[i],stdout);
++     putchar('\n');
++   }
++   ++i;  /* crypt support means there IS at least one compilation option */
+diff --git a/meta-openembedded/meta-oe/recipes-extended/zip/files/zipnote-crashes-with-segfault.patch b/meta-openembedded/meta-oe/recipes-extended/zip/files/zipnote-crashes-with-segfault.patch
+new file mode 100644
+index 00000000..77ade40a
+--- /dev/null
++++ b/meta-openembedded/meta-oe/recipes-extended/zip/files/zipnote-crashes-with-segfault.patch
+@@ -0,0 +1,22 @@
++Close the correct file descriptor
++
++https://bugs.archlinux.org/task/47713
++
++Signed-off-by: Jate Sujjavanich <jatedev@gmail.com>
++
++Upstream-Status: Inactive-Upstream [no upstream]
++
++diff --git a/zipnote.c b/zipnote.c
++index 5e02cb6..996f012 100644
++--- a/zipnote.c
+++++ b/zipnote.c
++@@ -661,7 +661,7 @@ char **argv;            /* command line tokens */
++     if ((r = zipcopy(z)) != ZE_OK)
++       ziperr(r, "was copying an entry");
++   }
++-  fclose(x);
+++  fclose(in_file);
++
++   /* Write central directory and end of central directory with new comments */
++   if ((c = zftello(y)) == (zoff_t)-1)    /* get start of central */
++
+diff --git a/meta-openembedded/meta-oe/recipes-extended/zip/zip_3.0.bb b/meta-openembedded/meta-oe/recipes-extended/zip/zip_3.0.bb
+new file mode 100644
+index 00000000..18b5d864
+--- /dev/null
++++ b/meta-openembedded/meta-oe/recipes-extended/zip/zip_3.0.bb
+@@ -0,0 +1,53 @@
++SUMMARY = "Compressor/archiver for creating and modifying .zip files"
++HOMEPAGE = "http://www.info-zip.org"
++DESCRIPTION = "Info-ZIP's purpose is to provide free, portable, high-quality versions of the Zip and UnZip compressor-archiver utilities that are compatible with the DOS-based PKZIP by PKWARE, Inc."
++SECTION = "console/utils"
++
++LICENSE = "BSD-3-Clause"
++LIC_FILES_CHKSUM = "file://LICENSE;md5=04d43c5d70b496c032308106e26ae17d"
++
++PR = "r2"
++
++S = "${WORKDIR}/zip30"
++
++SRC_URI = "${SOURCEFORGE_MIRROR}/infozip/Zip%203.x%20%28latest%29/3.0/zip30.tar.gz \
++           file://fix-security-format.patch \
++           file://10-remove-build-date.patch \
++           file://zipnote-crashes-with-segfault.patch \
++           "
++UPSTREAM_VERSION_UNKNOWN = "1"
++
++SRC_URI[md5sum] = "7b74551e63f8ee6aab6fbc86676c0d37"
++SRC_URI[sha256sum] = "f0e8bb1f9b7eb0b01285495a2699df3a4b766784c1765a8f1aeedf63c0806369"
++
++# Disputed and also Debian doesn't consider a vulnerability
++CVE_CHECK_WHITELIST += "CVE-2018-13410"
++
++# Not for zip but for smart contract implementation for it
++CVE_CHECK_WHITELIST += "CVE-2018-13684"
++
++# zip.inc sets CFLAGS, but what Makefile actually uses is
++# CFLAGS_NOOPT.  It will also force -O3 optimization, overriding
++# whatever we set.
++EXTRA_OEMAKE = "'CC=${CC}' 'BIND=${CC}' 'AS=${CC} -c' 'CPP=${CPP}' \
++		'CFLAGS=-I. -DUNIX ${CFLAGS}' \
++		'CFLAGS_NOOPT=-I. -DUNIX ${CFLAGS}' \
++		'INSTALL=install' 'INSTALL_D=install -d' \
++		'BINFLAGS=0755'"
++
++do_compile() {
++	oe_runmake -f unix/Makefile flags IZ_BZIP2=no_such_directory
++	sed -i 's#LFLAGS1=""#LFLAGS1="${LDFLAGS}"#' flags
++	oe_runmake -f unix/Makefile generic IZ_BZIP2=no_such_directory
++}
++
++do_install() {
++	oe_runmake -f unix/Makefile prefix=${D}${prefix} \
++		   BINDIR=${D}${bindir} MANDIR=${D}${mandir}/man1 \
++		   install
++}
++
++BBCLASSEXTEND = "native"
++
++# exclude version 2.3.2 which triggers a false positive
++UPSTREAM_CHECK_REGEX = "^zip(?P<pver>(?!232).+)\.tgz"
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index caae4a4f..43194aa2 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -79,6 +79,7 @@ IMAGE_INSTALL_append = " \
+ 	u-boot-fw-utils \
+ 	python3-pip \
+ 	openssh-sshd \
++	zip \
+ "
+
+ # Additional tools for support testing Realtime characteristic in system
+--
+2.25.1

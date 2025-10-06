@@ -1,4 +1,4 @@
-Subject: [PATCH 12/23] Fix the busybox issue
+Subject: [PATCH 12/24] Fix the busybox issue
 
 Issue:
     RAUC busybox patch is failed due to incompatible version of busybox
