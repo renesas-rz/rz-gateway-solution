@@ -1,0 +1,28 @@
+aws:
+  region: d
+  aws_access_key: a
+  aws_session_token: c
+  aws_secret: b
+  certs_dir: /opt/greengrass/certs
+  elastic_ip: ha-server-ip
+iot:
+  thing_name: home_automation_thing
+  thing_group_name: g2l_homeautomation_group
+  policy_name: GreengrassV2IoTThingPolicy
+  role_name: GreengrassV2TokenExchangeRole
+  role_access: GreengrassV2TokenExchangeRoleAccess
+  role_alias: GreengrassV2TokenExchangeRoleAlias
+greengrass:
+  version: 2.12.0
+  component_name: HomeAutomationGreengrassComponent
+  component_version: 1.0.0
+awstimestream:
+  database_name: homeautomation_db
+  table_name: humidity_readings
+project:
+  playbook_source: ../playbook.yaml
+  component_zip_file: ../../home_automation_component.zip
+  src_backend_dir: ../../src/backend
+  src_frontend_build_dir: ../../src/frontend/build
+  systemd_file: ../../src/backend/systemd-homeautomation.service
+  requirements_file: ../../src/backend/requirements.txt

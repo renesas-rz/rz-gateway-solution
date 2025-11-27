@@ -1,0 +1,895 @@
+---
+- name: Provision EC2 Instance with IAM Role
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    key_name: homeautomation-server-key
+    instance_type: t3.small
+    instance_name: homeautomation-instance
+    sec_group: homeautomation-sg
+    iam_role_name: homeautomation-ec2-role
+    iam_policy_name: homeautomation-timestream-policy
+    enable_eip: 1
+  vars_files:
+    - credentials.txt
+
+  tasks:
+    - name: Create security group
+      amazon.aws.ec2_security_group:
+        name: "{{ sec_group }}"
+        description: "Security Group for Home Automation Instance"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        rules:
+          - proto: tcp
+            ports: [22, 80, 8000, 3000]
+            cidr_ip: 0.0.0.0/0
+            rule_desc: Allow SSH and app traffic
+
+    - name: Check for existing EC2 instance
+      amazon.aws.ec2_instance_info:
+        filters:
+          "tag:Name": "{{ instance_name }}"
+          instance-state-name: [ "running", "pending", "stopping", "stopped" ]
+        region: "{{ aws_region }}"
+      register: ec2_info
+
+    - name: Terminate EC2 instance if it exists
+      amazon.aws.ec2_instance:
+        instance_ids: "{{ item.instance_id }}"
+        state: absent
+        region: "{{ aws_region }}"
+      loop: "{{ ec2_info.instances }}"
+      when: ec2_info.instances is defined and ec2_info.instances | length > 0
+      register: terminate_instance_result
+
+    - name: Check for existing Key Pair
+      amazon.aws.ec2_key_info:
+        filters:
+          key-name: "{{ key_name }}"
+        region: "{{ aws_region }}"
+      register: key_pair_info
+
+    - name: Delete Key Pair if it exists
+      amazon.aws.ec2_key:
+        name: "{{ key_pair_name }}"
+        state: absent
+        region: "{{ aws_region }}"
+      when: key_pair_info.key_pairs is defined and key_pair_info.key_pairs | length > 0
+      register: delete_key_pair_result
+
+    - name: Create IAM role for EC2
+      amazon.aws.iam_role:
+        name: "{{ iam_role_name }}"
+        assume_role_policy_document: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": { "Service": "ec2.amazonaws.com" },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        state: present
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+
+    - name: Check if IAM policy already exists
+      command: >
+        aws iam get-policy
+        --policy-arn arn:aws:iam::{{ aws_account_id }}:policy/{{ iam_policy_name }}
+        --region {{ aws_region }}
+      register: existing_policy
+      failed_when: false  
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Get all roles attached to policy
+      command: >
+        aws iam list-entities-for-policy
+        --policy-arn arn:aws:iam::{{ aws_account_id }}:policy/{{ iam_policy_name }}
+        --region {{ aws_region }}
+      register: attached_entities
+      when: existing_policy.rc == 0 
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Detach policy from all roles
+      command: >
+        aws iam detach-role-policy
+        --role-name {{ item.RoleName }}
+        --policy-arn arn:aws:iam::{{ aws_account_id }}:policy/{{ iam_policy_name }}
+      loop: "{{ (attached_entities.stdout | from_json).PolicyRoles | default([]) }}"
+      when: existing_policy.rc == 0 
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Delete existing IAM policy if it exists
+      command: >
+        aws iam delete-policy
+        --policy-arn arn:aws:iam::{{ aws_account_id }}:policy/{{ iam_policy_name }}
+        --region {{ aws_region }}
+      when: existing_policy.rc == 0 
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Create IAM policy for Timestream + IoT Shadow access
+      command: >
+        aws iam create-policy
+        --policy-name {{ iam_policy_name }}
+        --policy-document '{
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "timestream:WriteRecords",
+                "timestream:DescribeEndpoints",
+                "timestream:DescribeTable",
+                "timestream:ListTables",
+                "timestream:Select",
+                "timestream:SelectValues"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "iot:GetThingShadow",
+                "iot:UpdateThingShadow"
+              ],
+              "Resource": "arn:aws:iot:{{ aws_region }}:{{ aws_account_id }}:thing/*"
+            }
+          ]
+        }'
+        --region {{ aws_region }}
+      register: timestream_policy
+      when: existing_policy.rc != 0 
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Set policy ARN (from newly created policy)
+      set_fact:
+        timestream_policy_arn: "{{ (timestream_policy.stdout | from_json).Policy.Arn }}"
+      when: existing_policy.rc != 0 and timestream_policy.rc == 0
+
+    - name: Set policy ARN (from existing policy)
+      set_fact:
+        timestream_policy_arn: "arn:aws:iam::{{ aws_account_id }}:policy/{{ iam_policy_name }}"
+      when: existing_policy.rc == 0
+
+    - name: Attach policy to IAM role
+      command: >
+        aws iam attach-role-policy
+        --role-name {{ iam_role_name }}
+        --policy-arn {{ timestream_policy_arn }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      
+    - name: Create instance profile
+      amazon.aws.iam_instance_profile:
+        name: "{{ iam_role_name }}-profile"
+        role: "{{ iam_role_name }}"
+        state: present
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+
+    - name: Launch EC2 instance with IAM role
+      amazon.aws.ec2_instance:
+        name: "{{ instance_name }}"
+        key_name: "{{ key_name }}"
+        instance_type: "{{ instance_type }}"
+        security_group: "{{ sec_group }}"
+        image_id: "{{ image }}"
+        region: "{{ aws_region }}"
+        iam_instance_profile: "{{ iam_role_name }}-profile"
+        network:
+          assign_public_ip: true
+        wait: true
+        tags:
+          Environment: HomeAutomation
+      register: ec2_instance
+
+    - name: Manage Elastic IP and associate with EC2 instance
+      shell: |
+        EIP_ALLOCATION_ID=$(aws ec2 describe-addresses \
+          --query "Addresses[?Tags[?Key=='Name' && Value=='${EIP_NAME}']].AllocationId" \
+          --output text)
+        if [ -z "$EIP_ALLOCATION_ID" ]; then
+          EIP_ALLOCATION_ID=$(aws ec2 allocate-address --domain vpc \
+            --query 'AllocationId' --output text)
+          aws ec2 create-tags --resources "$EIP_ALLOCATION_ID" \
+            --tags Key=Name,Value="$EIP_NAME"
+        else
+          ASSOCIATION_ID=$(aws ec2 describe-addresses \
+            --query "Addresses[?AllocationId=='${EIP_ALLOCATION_ID}'].AssociationId" \
+            --output text)
+          if [ ! -z "$ASSOCIATION_ID" ]; then
+            aws ec2 disassociate-address --association-id "$ASSOCIATION_ID"
+          fi
+        fi
+        EC2_INSTANCE_ID=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=${EC2_INSTANCE_NAME}" "Name=instance-state-name,Values=running" \
+          --query "Reservations[*].Instances[*].InstanceId" \
+          --output text)
+        aws ec2 associate-address \
+          --instance-id "$EC2_INSTANCE_ID" \
+          --allocation-id "$EIP_ALLOCATION_ID"
+      when: enable_eip != 0
+      ignore_errors: true
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+        EIP_NAME: "{{ elastic_ip_name }}"
+        EC2_INSTANCE_NAME: "{{ instance_name }}"
+
+    - name: Fetch EC2 instance info by Name tag
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        access_key: "{{ ec2_access_key }}"
+        secret_key: "{{ ec2_secret_key }}"
+        filters:
+          "tag:Name": "{{ instance_name }}"
+          "instance-state-name": "running"
+      register: ec2_instance
+
+    - name: Save instance IP to file
+      copy:
+        content: "{{ ec2_instance.instances[0].public_ip_address }}"
+        dest: ./instance_ip.txt
+
+    - name: Set Home Automation Instance IP as global fact
+      set_fact:
+        ha_server_ip: "{{ ec2_instance.instances[0].public_ip_address }}"
+
+    - name: Add EC2 to inventory
+      add_host:
+        name: "{{ ha_server_ip }}"
+        groups: ec2group
+        ansible_user: ubuntu
+        ansible_ssh_private_key_file: "{{ key_path }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ha_server_ip: "{{ ha_server_ip }}"
+
+    - name: Wait for SSH to become available
+      wait_for:
+        host: "{{ ha_server_ip }}"
+        port: 22
+        delay: 30
+        timeout: 600
+        state: started
+
+    - name: Debug added host
+      debug:
+        msg: "Added host {{ ha_server_ip }} to group ec2group"
+
+    - name: List all hosts in ec2group
+      debug:
+        msg: "{{ groups['ec2group'] | default('No hosts in ec2group') }}"
+
+- name: Create Timestream Database and Table
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - credentials.txt
+
+  tasks:
+
+    - name: Check if Timestream database exists
+      command: >
+        aws timestream-write describe-database
+        --database-name {{ database_name }}
+        --region {{ aws_region }}
+      register: db_check
+      failed_when: false
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: List tables in db (only if database exists)
+      command: >
+        aws timestream-write list-tables 
+        --database-name {{ database_name }} 
+        --region {{ aws_region }}
+      register: tables_output
+      when: db_check.rc == 0 
+      failed_when: false 
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+    
+    - name: Delete all tables in db
+      command: >
+        aws timestream-write delete-table 
+        --database-name {{ database_name }} 
+        --table-name {{ item }} 
+        --region {{ aws_region }}
+      loop: "{{ (tables_output.stdout | from_json | json_query('Tables[].TableName')) if tables_output.stdout is defined else [] }}"
+      when: 
+        - db_check.rc == 0
+        - tables_output.stdout is defined
+        - (tables_output.stdout | from_json | json_query('Tables[].TableName') | length) > 0
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Delete database (only if exists)
+      command: >
+        aws timestream-write delete-database 
+        --database-name {{ database_name }} 
+        --region {{ aws_region }}
+      when: db_check.rc == 0
+      failed_when: false
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+
+    - name: Create Timestream Database using AWS CLI
+      command: >
+        aws timestream-write create-database
+        --database-name {{ database_name }}
+        --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: timestream_db_result
+      failed_when: 
+        - timestream_db_result.rc != 0
+        - "'ConflictException' not in timestream_db_result.stderr"
+
+    - name: Create Timestream Table for humidity readings using AWS CLI
+      command: >
+        aws timestream-write create-table
+        --database-name {{ database_name }}
+        --table-name {{ table_name }}
+        --retention-properties MemoryStoreRetentionPeriodInHours=24,MagneticStoreRetentionPeriodInDays=365
+        --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: timestream_table_result
+      failed_when: 
+        - timestream_table_result.rc != 0
+        - "'ConflictException' not in timestream_table_result.stderr"
+
+# deploy fastapi backend in ec2
+
+- name: Deploy FastAPI Home Automation Backend Engine to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: true
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_scp_if_ssh: true
+    ansible_ssh_private_key_file: "{{ key_path }}"
+  tasks:
+
+    - name: Get IoT Data endpoint
+      command: aws iot describe-endpoint --endpoint-type iot:Data-ATS --query endpointAddress --output text  --region "{{ aws_region }}"
+      register: iot_endpoint_result
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set IoT endpoint fact
+      set_fact:
+        iot_endpoint_global: "{{ iot_endpoint_result.stdout }}"
+      run_once: true
+      delegate_to: localhost
+      delegate_facts: true
+
+    - name: Use the global variable on other hosts
+      debug:
+        msg: "{{ hostvars['localhost']['iot_endpoint_global'] }}"
+
+    - name: Persist IoT Endpoint and HA_SERVER_IP into /etc/profile.d
+      copy:
+        dest: /etc/profile.d/iot_env.sh
+        mode: "0644"
+        content: |
+          HA_SERVER_IP={{ ha_server_ip }}
+          IOT_ENDPOINT={{ hostvars['localhost']['iot_endpoint_global'] }}
+          TS_DB={{ database_name }}
+          TS_TABLE={{ table_name }}
+          THING_NAME={{ thing_name }}
+
+    - name: Wait for cloud-init
+      ansible.builtin.raw: cloud-init status --wait
+      register: cloud_init_result
+      retries: 10
+      delay: 30
+      until: cloud_init_result.rc == 0
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name: [python3, python3-pip, git, awscli]
+        state: present
+
+    - name: Create backend directory
+      file:
+        path: /home/ubuntu/src/backend
+        state: directory
+
+    - name: Copy FastAPI backend code
+      copy:
+        src: "{{ backend_src }}"
+        dest: /home/ubuntu/src/backend/
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Install Python requirements
+      pip:
+        requirements: /home/ubuntu/src/backend/backend/requirements.txt
+        executable: pip3
+
+    - name: Copy systemd service file
+      copy:
+        src: "{{ service_src }}"
+        dest: /etc/systemd/system/ha-server.service
+
+    - name: Start FastAPI service
+      systemd:
+        name: ha-server
+        enabled: yes
+        state: restarted
+        daemon_reload: yes
+
+    - name: Health check - Wait for FastAPI to be ready
+      uri:
+        url: http://localhost:8000/health
+        method: GET
+        status_code: 200
+      register: result
+      retries: 10
+      delay: 3
+      until: result.status == 200
+
+    - name: Verify FastAPI server is accessible externally
+      uri:
+        url: "http://{{ ha_server_ip }}:8000/health"
+        method: GET
+        status_code: 200
+      register: external_health_check
+      retries: 5
+      delay: 2
+      until: external_health_check.status == 200
+
+    - name: Display FastAPI server status
+      debug:
+        msg: "FastAPI server is running and accessible at http://{{ ha_server_ip }}:8000"
+
+#deploy frontend in ec2
+
+
+- name: Deploy Prebuilt React App to EC2
+  hosts: ec2group
+  become: true
+  gather_facts: false
+  vars:
+    react_dest_path: /var/www/html
+    ansible_scp_if_ssh: true
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure destination directory exists
+      file:
+        path: "{{ react_dest_path }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Copy React build folder to EC2
+      copy:
+        src: "{{ frontend_src }}/"
+        dest: "{{ react_dest_path }}/"
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Generate frontend config.json with API base URL
+      copy:
+        dest: "{{ react_dest_path }}/config.json"
+        content: |
+          {
+            "HA_SERVER_IP": "http://{{ ha_server_ip }}:8000"
+          }
+        mode: "0644"
+    - name: Configure nginx for React
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80;
+              server_name localhost;
+
+              root {{ react_dest_path }};
+              index index.html index.htm;
+
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      notify: Restart nginx
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+#deploy greengrass component.
+- name: Create S3 policy to access and create s3
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    s3_role_name: "s3_bucket_ha_role"
+    component_recipe_path: "/tmp/homeautomation-recipe.json"
+    s3_bucket_prefix: "hacomponentbucket"
+    s3_bucket_name: "{{ s3_bucket_prefix }}-{{ aws_account_id }}"
+    s3_object_key: "components/{{ component_name }}/{{ component_version }}/home_automation_component.zip"
+  tasks:
+    - name: Create S3 access policy for home automation greengrass component
+      copy:
+        dest: /tmp/s3-access-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:PutObject",
+                  "s3:DeleteObjectVersion",
+                  "s3:DeleteObject",
+                  "s3:CreateBucket",
+                  "s3:ListBucket",
+                  "s3:ListBucketVersions",
+                  "s3:DeleteBucket",
+                  "s3:PutObjectTagging",
+                  "s3:PutBucketTagging",
+                  "s3:PutBucketVersioning",
+                  "s3:PutPublicAccessBlock"
+                ],
+                "Resource": [
+                  "*"
+                ]
+              }
+            ]
+          }
+
+    - name: Check if S3 role exists
+      shell: |
+        aws iam get-role --role-name "{{ s3_role_name }}" --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_result
+      failed_when: false
+
+    - name: Create S3 role trust policy if role doesn't exist
+      copy:
+        dest: /tmp/s3-trust-policy.json
+        content: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+      when: s3_role_result.rc != 0
+
+    - name: Create S3 role if it doesn't exist
+      shell: |
+        aws iam create-role \
+          --role-name "{{ s3_role_name }}" \
+          --assume-role-policy-document file:///tmp/s3-trust-policy.json \
+          --description "Role for S3 bucket access" \
+          --query 'Role.Arn' --output text
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_role_create_result
+      when: s3_role_result.rc != 0
+
+    - name: Attach S3 access policy to role
+      shell: |
+        aws iam put-role-policy \
+          --role-name "{{ s3_role_name }}" \
+          --policy-name "S3HAAccessPolicy" \
+          --policy-document file:///tmp/s3-access-policy.json
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+    - name: Check if greengrass component zip file exists
+      stat:
+        path: "{{ component_zip_file }}"
+      register: zip_file_check
+
+    - name: Fail if zip file doesn't exist
+      fail:
+        msg: "Component zip file not found at {{ component_zip_file }}"
+      when: not zip_file_check.stat.exists
+
+    - name: Create or ensure S3 bucket exists
+      shell: |
+        aws s3api create-bucket --bucket "{{ s3_bucket_name }}" --region "{{ aws_region }}" 2>/dev/null || true
+        aws s3api head-bucket --bucket "{{ s3_bucket_name }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: s3_bucket_ensure_result
+      retries: 3
+      delay: 5
+      until: s3_bucket_ensure_result.rc == 0
+
+    - name: Block public access on S3 bucket
+      shell: |
+        aws s3api put-public-access-block \
+          --bucket "{{ s3_bucket_name }}" \
+          --public-access-block-configuration \
+          "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      register: public_access_result
+      retries: 3
+      delay: 2
+      until: public_access_result.rc == 0
+
+    - name: Upload charging client zip file to S3 using AWS CLI
+      shell: |
+        aws s3 cp "{{ component_zip_file }}" "s3://{{ s3_bucket_name }}/{{ s3_object_key }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_DEFAULT_REGION: "{{ aws_region }}"
+      delegate_to: localhost
+      register: s3_upload_result
+
+    - name: Set S3 URI for component artifact
+      set_fact:
+        s3_artifact_uri: "s3://{{ s3_bucket_name }}/{{ s3_object_key }}"
+
+    - name: Display S3 upload information
+      debug:
+        msg: 
+          - "S3 Bucket: {{ s3_bucket_name }}"
+          - "S3 Object Key: {{ s3_object_key }}"
+          - "S3 URI: {{ s3_artifact_uri }}"
+
+
+    - name: Create recipe.json for Home Automation component
+      copy:
+        dest: "{{ component_recipe_path }}"
+        content: |
+          {
+            "RecipeFormatVersion": "2020-01-25",
+            "ComponentName": "{{ component_name }}",
+            "ComponentVersion": "{{ component_version }}",
+            "ComponentDescription": "Greengrass Home Automation Component with IPC-based shadow control",
+            "ComponentPublisher": "Custom",
+            "ComponentType": "aws.greengrass.generic",
+            "ComponentDependencies": {
+              "aws.greengrass.StreamManager": {
+                "VersionRequirement": ">=2.0.0",
+                "DependencyType": "HARD"
+              },
+              "aws.greengrass.ShadowManager": {
+                "VersionRequirement": ">=2.0.0",
+                "DependencyType": "HARD"
+              }
+            },
+            "ComponentConfiguration": {
+              "DefaultConfiguration": {
+                "HA_SERVER_IP": "{{ ha_server_ip }}",
+                "THING_NAME": "{{ thing_name }}",
+                "AWS_REGION": "{{ aws_region | default('us-east-1') }}",
+                "TS_TABLE": "{{ table_name }}",
+                "TS_DB": "{{ database_name }}",
+                "SM_STREAM_NAME": "humidity_stream",
+                "AWS_ACCESS_KEY_ID": "{{ ec2_access_key }}",
+                "AWS_SESSION_TOKEN": "{{ ec2_session_token }}",
+                "AWS_SECRET_ACCESS_KEY": "{{ ec2_secret_key }}",
+                "LOOP_SEC": "60",
+                "LOG_LEVEL": "INFO",
+                "accessControl": {
+                  "aws.greengrass.ipc.mqttproxy": {
+                    "{{ component_name }}:mqtt:1": {
+                      "policyDescription": "Allows subscribing to shadow delta updates via IPC",
+                      "operations": [
+                        "aws.greengrass#SubscribeToIoTCore"
+                      ],
+                      "resources": [
+                        "$aws/things/{{ thing_name }}/shadow/update/delta"
+                      ]
+                    }
+                  },
+                  "aws.greengrass.ShadowManager": {
+                    "{{ component_name }}:shadow:1": {
+                      "policyDescription": "Allows shadow operations for device control",
+                      "operations": [
+                        "aws.greengrass#GetThingShadow",
+                        "aws.greengrass#UpdateThingShadow",
+                        "aws.greengrass#DeleteThingShadow"
+                      ],
+                      "resources": [
+                        "{{ thing_name }}",
+                        "*"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "Manifests": [
+              {
+                "Platform": {
+                  "os": "linux"
+                },
+                "Lifecycle": {
+                  "Install": {
+                    "RequiresPrivilege": true,
+                    "Script": "\
+                      export TS_DB={configuration:/TS_DB} && \
+                      export TS_TABLE={configuration:/TS_TABLE} && \
+                      export HA_SERVER_IP={configuration:/HA_SERVER_IP} && \
+                      export THING_NAME={configuration:/THING_NAME} && \
+                      export AWS_SECRET_ACCESS_KEY={configuration:/AWS_SECRET_ACCESS_KEY} && \
+                      export AWS_SESSION_TOKEN={configuration:/AWS_SESSION_TOKEN} && \
+                      export AWS_ACCESS_KEY_ID={configuration:/AWS_ACCESS_KEY_ID} && \
+                      export AWS_REGION={configuration:/AWS_REGION} && \
+                      cd {artifacts:decompressedPath}/home_automation_component && \
+                      chmod +x bootstrap.sh && ./bootstrap.sh",
+                    "Timeout": 900
+                  },
+                  "Run": {
+                    "RequiresPrivilege": true,
+                    "Script": "\
+                      export TS_DB={configuration:/TS_DB} && \
+                      export TS_TABLE={configuration:/TS_TABLE} && \
+                      export HA_SERVER_IP={configuration:/HA_SERVER_IP} && \
+                      export THING_NAME={configuration:/THING_NAME} && \
+                      export AWS_SECRET_ACCESS_KEY={configuration:/AWS_SECRET_ACCESS_KEY} && \
+                      export AWS_SESSION_TOKEN={configuration:/AWS_SESSION_TOKEN} && \
+                      export AWS_ACCESS_KEY_ID={configuration:/AWS_ACCESS_KEY_ID} && \
+                      export AWS_REGION={configuration:/AWS_REGION} && \
+                      export SM_STREAM_NAME={configuration:/SM_STREAM_NAME} && \
+                      export LOOP_SEC={configuration:/LOOP_SEC} && \
+                      export LOG_LEVEL={configuration:/LOG_LEVEL} && \
+                      cd {artifacts:decompressedPath}/home_automation_component && \
+                      python3 -u greengrass_component.py"
+                  }
+                },
+                "Artifacts": [
+                  {
+                    "Uri": "{{ s3_artifact_uri }}",
+                    "Unarchive": "ZIP"
+                  }
+                ]
+              }
+            ]
+          }
+
+    - name: Check if Home Automation component version already exists
+      shell: |
+        aws greengrassv2 describe-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ component_name }}:versions:{{ component_version }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: component_check
+      failed_when: false
+
+    - name: Delete home automation component version if it exists
+      shell: |
+        aws greengrassv2 delete-component \
+          --arn "arn:aws:greengrass:{{ aws_region }}:$(aws sts get-caller-identity --query 'Account' --output text):components:{{ component_name }}:versions:{{ component_version }}" \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: component_delete
+      when: component_check.rc == 0
+      ignore_errors: true
+
+    - name: Wait for component deletion to complete
+      pause:
+        seconds: 10
+      when: component_check.rc == 0
+
+    - name: Create Home Automation component using S3-based recipe
+      shell: |
+        aws greengrassv2 create-component-version \
+          --inline-recipe fileb://{{ component_recipe_path }} \
+          --region "{{ aws_region }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+      register: component_result
+
+    - name: Display created greengrass component result
+      debug:
+        msg: "Home Automation component created: {{ component_result.stdout }}"
+
+
+    - name: Deploy Home Automation greengrass components including nucleus to core device
+      shell: |
+        aws greengrassv2 create-deployment \
+          --target-arn "arn:aws:iot:{{ aws_region }}:{{ aws_account_id }}:thing/{{ thing_name }}" \
+          --deployment-name "HomeAutomation-deployment-$(date +%s)" \
+          --components '{
+            "{{ component_name }}": {
+              "componentVersion": "{{ component_version }}"
+            },
+            "aws.greengrass.StreamManager": {
+              "componentVersion": "2.1.11"
+            },
+            "aws.greengrass.Nucleus": {
+              "componentVersion": "2.12.0"
+            },
+            "aws.greengrass.ShadowManager": {
+              "componentVersion": "2.3.9",
+              "configurationUpdate": {
+                "merge": "{\"synchronize\":{\"coreThing\":{\"classic\":true},\"shadowDocuments\":[{\"thingName\":\"{{ thing_name }}\",\"classic\":true}] ,\"direction\":\"betweenDeviceAndCloud\"},\"rateLimits\":{\"maxOutboundSyncUpdatesPerSecond\":100,\"maxTotalLocalRequestsRate\":200,\"maxLocalRequestsPerSecondPerThing\":20},\"shadowDocumentSizeLimitBytes\":8192}"
+              }
+            }
+          }' \
+          --region {{ aws_region }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ ec2_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ ec2_secret_key }}"
+        AWS_SESSION_TOKEN: "{{ ec2_session_token | default('') }}"
+      register: deployment_result
+
+
+    - name: Debug Home Automation deployment result
+      debug:
+        msg: "Home Automation component deployed: {{ deployment_result.stdout }}"
+
+    - name: Clean up temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ component_recipe_path }}"
+      ignore_errors: true

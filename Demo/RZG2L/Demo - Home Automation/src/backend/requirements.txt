@@ -1,0 +1,13 @@
+# FastAPI + ASGI server
+fastapi
+uvicorn
+
+# AWS SDK
+boto3
+# botocore==1.35.36
+
+# Date/time parsing (used for Timestream queries)
+python-dateutil
+
+# Pydantic for request/response validation
+pydantic
