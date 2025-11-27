@@ -1,4 +1,4 @@
-Subject: [PATCH 17/24] u-boot: Added dual copy support
+Subject: [PATCH 17/28] u-boot: Added dual copy support
 
 - CONFIG_SYS_ENV_DUAL_COPY config is created in u-boot
 - Implemented code to copy the env on both priority and redundant

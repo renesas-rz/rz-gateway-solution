@@ -1,4 +1,4 @@
-Subject: [PATCH 21/24] Kernel: Enable WDT0 at Linux boot time
+Subject: [PATCH 21/28] Kernel: Enable WDT0 at Linux boot time
 
 - WDT0 from u-boot is stopped due to clock reset at linux
   boot time.

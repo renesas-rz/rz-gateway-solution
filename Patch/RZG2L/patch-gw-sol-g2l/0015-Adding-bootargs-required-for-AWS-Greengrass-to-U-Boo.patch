@@ -1,4 +1,4 @@
-Subject: [PATCH 15/24] Adding bootargs required for AWS Greengrass to U-Boot
+Subject: [PATCH 15/28] Adding bootargs required for AWS Greengrass to U-Boot
 
 - Added aws greengrass lambda function linux kernel bootargs
   'cgroup_enable=memory cgroup_memory=1 systemd.unified_cgroup_hierarchy=0'

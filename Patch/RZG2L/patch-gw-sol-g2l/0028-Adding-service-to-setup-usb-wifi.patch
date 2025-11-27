@@ -1,0 +1,221 @@
+Subject: [PATCH 4/4] Adding service to setup usb wifi
+
+- Implemented script to automate the usb wifi connectivity
+- User has to provide SSID and password to
+  "/opt/usb-wifi/wifi_credentials.txt" and then restart.
+  The system automatically enable the wifi on RZG2L
+- Below is the path:
+  Insert USB-Wifi --> 99-usb-wifi.rules --> sb-wifi@wlan0.service
+                                                      |
+           wifi_credentials.txt <-- connect_wifi.sh <--
+
+---
+ .../meta-rz-common/include/core-image-bsp.inc |  1 +
+ .../files/99-usb-wifi.rules                   |  1 +
+ .../files/connect_wifi.sh                     | 90 +++++++++++++++++++
+ .../files/usb-wifi@.service                   | 13 +++
+ .../files/wifi_credentials.txt                |  5 ++
+ .../smarthome-wlan-service.bb                 | 42 +++++++++
+ 6 files changed, 152 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/99-usb-wifi.rules
+ create mode 100755 meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/connect_wifi.sh
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/usb-wifi@.service
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/wifi_credentials.txt
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/smarthome-wlan-service.bb
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index bd52edfa..9bb63e87 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -93,6 +93,7 @@ IMAGE_INSTALL_append_rzg2l = " \
+     wireless-regdb \
+     kernel-module-hs3001 \
+     smarthome-gpio-service \
++    smarthome-wlan-service \
+ "
+ 
+ # Additional tools for support testing Realtime characteristic in system
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/99-usb-wifi.rules b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/99-usb-wifi.rules
+new file mode 100644
+index 00000000..71b05e10
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/99-usb-wifi.rules
+@@ -0,0 +1 @@
++ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", TAG+="systemd", ENV{SYSTEMD_WANTS}="usb-wifi@wlan0.service"
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/connect_wifi.sh b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/connect_wifi.sh
+new file mode 100755
+index 00000000..07066600
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/connect_wifi.sh
+@@ -0,0 +1,90 @@
++#!/bin/sh
++
++LOG_FILE=/tmp/wlan_intf_log_.txt
++INTF=$1
++
++echo "INTF: $INTF" > ${LOG_FILE}
++
++ip link set ${INTF} down
++ip link set eth0 down
++ip link set eth1 down
++ip link set ${INTF} up
++
++setup_supplicant()
++{
++    CONFIG_FILE=/opt/usb-wifi/wifi_credentials.txt
++    SSID=$(grep -i '^SSID=' "$CONFIG_FILE" | cut -d '"' -f 2 | tr -d '\n')
++    PASSWORD=$(grep -i '^PASSWORD=' "$CONFIG_FILE" | cut -d '"' -f 2 | tr -d '\n')
++    echo "SSID: $SSID"
++    echo "PASSWORD: $PASSWORD"
++
++    WPA_SUPPLICANT_CONFIG_FILE="/etc/wpa_supplicant-${INTF}.conf"
++    echo "ctrl_interface=/var/run/wpa_supplicant" | tee $WPA_SUPPLICANT_CONFIG_FILE
++    echo "ctrl_interface_group=0" | tee -a $WPA_SUPPLICANT_CONFIG_FILE
++    echo "update_config=1" | tee -a $WPA_SUPPLICANT_CONFIG_FILE
++    echo "" | tee -a $WPA_SUPPLICANT_CONFIG_FILE
++    # Update SSID and Password
++    wpa_passphrase "$SSID" "$PASSWORD" | tee -a $WPA_SUPPLICANT_CONFIG_FILE
++    chmod 600 $WPA_SUPPLICANT_CONFIG_FILE
++
++    # Connect to SSID and Password
++    wpa_supplicant -B -i${INTF} -c $WPA_SUPPLICANT_CONFIG_FILE
++    sleep 1
++
++    # Setup DHCP IP
++    udhcpc -b -i ${INTF} | tee -a ${LOG_FILE}
++
++    # Add nameserver to /etc/resolv.conf
++    echo "nameserver 8.8.8.8" > /etc/resolv.conf
++    sleep 1
++} >> ${LOG_FILE}
++
++enable_other_interfaces()
++{
++    ip link set eth0 up
++    sleep 1
++    ip link set eth1 up
++    sleep 1
++} >> ${LOG_FILE}
++
++check_internet_on_wlan_if()
++{
++    if ping -I ${INTF} -c 1 -W 2 8.8.8.8 ; then
++        echo "Internet is available via ${INTF}"
++        return 0
++    else
++        echo "No internet connection on ${INTF}"
++        return 1
++    fi
++} >> ${LOG_FILE}
++
++setup_priority()
++{
++    check_internet_on_wlan_if
++    if [ $? -eq 0 ]; then
++        # Set the priority to Wlan interface
++        # The lowest metric has the highest preference
++        echo "Setting up low metric value..."
++        WLAN_GW=`ip route | grep default | grep ${INTF} | cut -d ' ' -f 3 | tr -d '\n'`
++        ip route add default via ${WLAN_GW} dev ${INTF} metric 5
++    else
++	echo "Check Wi-Fi connection..."
++    fi
++} >> ${LOG_FILE}
++
++RETRY_CNT=10 
++cnt=1                                  
++while [ $cnt -le $RETRY_CNT ]         
++do
++    echo "=========Try count: $cnt ============" >> ${LOG_FILE}
++    setup_supplicant
++    enable_other_interfaces
++    setup_priority
++    check_internet_on_wlan_if
++    if [ $? -eq 0 ]; then
++        break
++    else
++        ((cnt++));
++    fi
++    sleep 10
++done >> ${LOG_FILE}
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/usb-wifi@.service b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/usb-wifi@.service
+new file mode 100644
+index 00000000..eaaba8f1
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/usb-wifi@.service
+@@ -0,0 +1,13 @@
++[Unit]
++Description=WPA supplicant for %I
++Before=network-online.target
++#Wants=network-online.target
++
++[Service]
++ExecStart=/opt/usb-wifi/connect_wifi.sh %I
++Type=oneshot
++RemainAfterExit=yes
++
++[Install]
++WantedBy=multi-user.target
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/wifi_credentials.txt b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/wifi_credentials.txt
+new file mode 100644
+index 00000000..6f014867
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/files/wifi_credentials.txt
+@@ -0,0 +1,5 @@
++#
++# Provide SSID="SSID" and PASSWORD="PASSWORD"
++#
++SSID="Router SSID"
++PASSWORD="Router Password"
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/smarthome-wlan-service.bb b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/smarthome-wlan-service.bb
+new file mode 100644
+index 00000000..d494aa19
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-wlan-service/smarthome-wlan-service.bb
+@@ -0,0 +1,42 @@
++DESCRIPTION = "USB Wlan setup service"
++
++LICENSE = "GPLv2"
++LIC_FILES_CHKSUM = " \
++    file://${COMMON_LICENSE_DIR}/GPL-2.0;md5=801f80980d171dd6425610833a22dbe6 \
++"
++
++SRC_URI = " \
++   file://99-usb-wifi.rules \
++   file://usb-wifi@.service \
++   file://connect_wifi.sh \
++   file://wifi_credentials.txt \
++"
++
++S = "${WORKDIR}"
++
++do_install() {
++    install -d ${D}/opt/usb-wifi
++    install -m 0755 ${WORKDIR}/connect_wifi.sh ${D}/opt/usb-wifi/connect_wifi.sh
++    install -m 0766 ${WORKDIR}/wifi_credentials.txt ${D}/opt/usb-wifi/wifi_credentials.txt
++
++    install -d ${D}/etc/udev/rules.d/
++    install -m 0644 ${WORKDIR}/99-usb-wifi.rules ${D}/etc/udev/rules.d/99-usb-wifi.rules
++
++    install -d ${D}${systemd_system_unitdir}
++    install -m 0644 ${WORKDIR}/usb-wifi@.service ${D}${systemd_system_unitdir}/usb-wifi@.service
++}
++
++FILES_${PN} += " \
++    /opt \
++    /opt/usb-wifi \
++    /etc/udev/rules.d \
++    /lib \
++    /lib/systemd \
++    /lib/systemd/system \
++    /opt/usb-wifi/connect_wifi.sh \
++    /opt/usb-wifi/wifi_credentials.txt \
++    /etc/udev/rules.d/99-usb-wifi.rules \
++    /lib/systemd/system/usb-wifi@.service \
++"
++
++SYSTEMD_SERVICE_${PN} = "usb-wifi@.service"
+-- 
+2.25.1
+

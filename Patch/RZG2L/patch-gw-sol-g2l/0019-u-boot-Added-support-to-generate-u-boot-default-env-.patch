@@ -1,4 +1,4 @@
-Subject: [PATCH 19/24] u-boot: Added support to generate u-boot default env
+Subject: [PATCH 19/28] u-boot: Added support to generate u-boot default env
  bin file
 
 - Generated u-boot default env binary file

@@ -1,0 +1,117 @@
+Subject: [PATCH 27/28] Adding service to setup gpios
+
+- Added appliances GPIOs setup as service to initialize the gpios
+  before greengrass service.
+
+---
+ .../meta-rz-common/include/core-image-bsp.inc |  1 +
+ .../files/smart-home-gpio-setup.service       | 12 +++++++
+ .../files/smart-home-gpio-setup.sh            | 26 ++++++++++++++++
+ .../smarthome-gpio-service.bb                 | 31 +++++++++++++++++++
+ 4 files changed, 70 insertions(+)
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.service
+ create mode 100755 meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.sh
+ create mode 100644 meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/smarthome-gpio-service.bb
+
+diff --git a/meta-renesas/meta-rz-common/include/core-image-bsp.inc b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+index 843716d7..bd52edfa 100644
+--- a/meta-renesas/meta-rz-common/include/core-image-bsp.inc
++++ b/meta-renesas/meta-rz-common/include/core-image-bsp.inc
+@@ -92,6 +92,7 @@ IMAGE_INSTALL_append_rzg2l = " \
+     kernel-module-aic-load-fw \
+     wireless-regdb \
+     kernel-module-hs3001 \
++    smarthome-gpio-service \
+ "
+ 
+ # Additional tools for support testing Realtime characteristic in system
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.service b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.service
+new file mode 100644
+index 00000000..4a9be253
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.service
+@@ -0,0 +1,12 @@
++[Unit]
++Description=Smart Home GPIO Setup Script
++After=network.target
++
++[Service]
++Type=oneshot
++ExecStart=/opt/smart_home/smart-home-gpio-setup.sh
++RemainAfterExit=true
++
++[Install]
++WantedBy=multi-user.target
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.sh b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.sh
+new file mode 100755
+index 00000000..b54c4725
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/files/smart-home-gpio-setup.sh
+@@ -0,0 +1,26 @@
++#!/bin/sh
++
++# Light ===> LED ===> GPIO12 ===> P42_4 ===> gpio-460
++# FAN ===> MOTOR ===> GPIO13 ===> P47_2 ===> gpio-498
++
++LIGHT_GPIO_NUM="460"
++light_gpio="P42_4"
++FAN_GPIO_NUM="498"
++fan_gpio="P47_2"
++gpio_direction="out"
++ON="1"
++OFF="0"
++
++# LIGHT:LED
++# configuration part, must be done once in every boot
++echo "${LIGHT_GPIO_NUM}" > /sys/class/gpio/export
++echo "${gpio_direction}" > /sys/class/gpio/${light_gpio}/direction
++echo "${ON}" > /sys/class/gpio/${light_gpio}/active_low
++echo "${OFF}" > /sys/class/gpio/${light_gpio}/value
++
++# FAN:DC Motor
++# configuration part, must be done once in every boot
++echo "${FAN_GPIO_NUM}" > /sys/class/gpio/export
++echo "${gpio_direction}" > /sys/class/gpio/${fan_gpio}/direction
++echo "${OFF}" > /sys/class/gpio/${fan_gpio}/value
++
+diff --git a/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/smarthome-gpio-service.bb b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/smarthome-gpio-service.bb
+new file mode 100644
+index 00000000..645520c2
+--- /dev/null
++++ b/meta-renesas/meta-rzg2l/recipes-extend/smarthome-gpio-service/smarthome-gpio-service.bb
+@@ -0,0 +1,31 @@
++DESCRIPTION = "Smart Home GPIO setup service"
++
++LICENSE = "GPLv2"
++LIC_FILES_CHKSUM = " \
++    file://${COMMON_LICENSE_DIR}/GPL-2.0;md5=801f80980d171dd6425610833a22dbe6 \
++"
++
++SRC_URI = " \
++   file://smart-home-gpio-setup.sh \
++   file://smart-home-gpio-setup.service \
++"
++
++S = "${WORKDIR}"
++
++do_install() {
++    install -d ${D}/opt/smart_home
++    install -m 0755 ${WORKDIR}/smart-home-gpio-setup.sh ${D}/opt/smart_home/smart-home-gpio-setup.sh
++
++    install -d ${D}${systemd_system_unitdir}
++    install -m 0644 ${WORKDIR}/smart-home-gpio-setup.service ${D}${systemd_system_unitdir}/smart-home-gpio-setup.service
++}
++
++FILES_${PN} += " \
++    /opt \
++    /opt/smart_home \
++    /opt/smart_home/smart-home-gpio-setup.sh \
++"
++
++SYSTEMD_SERVICE_${PN} = "smart-home-gpio-setup.service"
++inherit systemd
++
+-- 
+2.25.1
+

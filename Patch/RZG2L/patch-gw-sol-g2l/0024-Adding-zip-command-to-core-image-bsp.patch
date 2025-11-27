@@ -1,4 +1,4 @@
-Subject: [PATCH 24/24] Adding zip command to core-image-bsp
+Subject: [PATCH 24/28] Adding zip command to core-image-bsp
 
 ---
  .../zip/files/10-remove-build-date.patch      | 19 +++++++

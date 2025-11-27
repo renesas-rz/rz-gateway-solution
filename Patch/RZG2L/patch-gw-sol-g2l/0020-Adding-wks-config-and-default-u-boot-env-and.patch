@@ -1,4 +1,4 @@
-Subject: [PATCH 20/24] Adding wks config and default u-boot env and
+Subject: [PATCH 20/28] Adding wks config and default u-boot env and
 
 - Added default u-boot env to boot from BOOT_SLOT=A or
   BOOT_SLOT=B.

@@ -1,4 +1,4 @@
-Subject: [PATCH 18/24] u-boot: Added dual copy support to u-boot env tools
+Subject: [PATCH 18/28] u-boot: Added dual copy support to u-boot env tools
 
 - Implemented code to support daul copy to u-boot env
   fw_printenv and fw_setenv linux tools

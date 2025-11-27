@@ -1,4 +1,4 @@
-Subject: [PATCH 01/24] Enabling linux configs required for aws greengrass
+Subject: [PATCH 01/28] Enabling linux configs required for aws greengrass
 
 ---
  .../linux/linux-renesas/.gitkeep              |  0

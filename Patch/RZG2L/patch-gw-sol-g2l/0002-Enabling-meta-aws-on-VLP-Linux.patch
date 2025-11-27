@@ -1,4 +1,4 @@
-Subject: [PATCH 02/24] Enabling meta-aws on VLP Linux
+Subject: [PATCH 02/28] Enabling meta-aws on VLP Linux
 
 ---
  meta-renesas/meta-rzg2l/docs/template/conf/bblayers.conf.sample | 2 ++

@@ -1,4 +1,4 @@
-Subject: [PATCH 10/24] Enable linux configuration for meta-rauc
+Subject: [PATCH 10/28] Enable linux configuration for meta-rauc
 
 - Below configurations are required to enable for rauc
   CONFIG_BLK_DEV_LOOP=y

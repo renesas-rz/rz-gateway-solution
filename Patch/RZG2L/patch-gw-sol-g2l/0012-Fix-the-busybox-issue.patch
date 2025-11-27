@@ -1,14 +1,10 @@
-From 9bb3469663a9235969c24633780c2f50eeafa90e Mon Sep 17 00:00:00 2001
-From: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
-Date: Mon, 21 Jul 2025 22:14:53 +0530
-Subject: [PATCH 12/24] ISDRZGWSDEV-23: Fix the busybox issue
+Subject: [PATCH 12/28] Fix the busybox issue
 
 Issue:
     RAUC busybox patch is failed due to incompatible version of busybox
 Fix:
     Modified the changes manually in the current version of busybox
 
-Signed-off-by: Alexandre Delarge <alexandre.delarge.vz@renesas.com>
 ---
  ...e-sizelimit-and-offset-option-for-lo.patch | 64 ++++++++-----------
  1 file changed, 26 insertions(+), 38 deletions(-)

@@ -1,4 +1,4 @@
-Subject: [PATCH 09/24] Restructure the partitions for OTA update
+Subject: [PATCH 09/28] Restructure the partitions for OTA update
 
 - Added new wks file for eSD Image
 - Added initial partitions info to wks file (rz-image-bootpart-esd-pmic-ota-update.wks)

@@ -1,4 +1,4 @@
-Subject: [PATCH 07/24] Fixing aws-greengrass-core-sdk-c lib package issue
+Subject: [PATCH 07/28] Fixing aws-greengrass-core-sdk-c lib package issue
 
 - do_package qa expecting cleanup on lib64, but all package files generated on lib.
 - Renaming lib with lib64 is solved the issue
